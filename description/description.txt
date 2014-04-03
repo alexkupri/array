@@ -1,16 +1,24 @@
 Hi, everybody who wants to help me to contribute my container to stl.
 
 PURPOSE
-This is a container, which should replace std::vector in many cases. It performs operations like insert, erase in O(log(N)) time. It has very similar interface. I think that it also will be useful, to build string upon it.
+This is a container, which should replace std::vector in many cases. It performs operations like insert, 
+erase in O(log(N)) time. It has very similar interface. I think that it also will be useful, 
+to build string upon it.
+
+
 
 DESCRIPTION
+
 /trunk/alex_kupriianov_array.h - declaration of container
 /trunk/alex_kupriianov_array2.h - implementation of container
 /trunk/main.cpp - test of container
 
-In the first version the amount of the code is small, <1000 lines for implementation, <700 for declaration. But I'll give you hints and you'll understand the whole concept by reading about 150 selected lines of code.
+In the first version the amount of the code is small, <1000 lines for implementation, <700 for declaration. 
+But I'll give you hints and you'll understand the whole concept by reading about 150 selected lines of code.
 
-Well, let's discover some details. It mixes concepts of so-called rope and BTree. Now it's intrusive. It takes O(log(N)) for insert and erase, but it takes O(log(N)) for random access as well.
+Well, let's discover some details. It mixes concepts of so-called rope and BTree. Now it's intrusive. 
+It takes O(log(N)) for insert and erase, but it takes O(log(N)) for random access as well.
+
 There is a tree inside. It consists of Branches and Leaves. The hierarchy is the following:
 struct Node ...
 struct Branch:public Node
@@ -20,34 +28,96 @@ struct Branch:public Node
 	size_k fillament;
 };
 struct Leaf:public Node ...
-Nodes by itself are not used. Each node contains subtree, and the number of elements in the whole subtree is contained in nums. Please read the operator[] and function find_leaf(...)const, and you will understand how it is organized.
-The tree is balanced, that guarantees that it will have log time even in the worst case. Please read function __check_consistency() to understand requirements. The most part of code is balancing/merging/splitting leaves/branches.
-Two parameters of array regulate maximum amount of elements in a leaf and children in a branch. It's a tradeoff between performance and memory consumption.
-When array is small, it contains only one leaf (no branches), so it behaves almost as fast as vector. See test results.
-There are two speed-ups: multiple insertions/deletions and iterators. Multiple insertions/deletions are still O(log(N)) per each element, but are by constant faster than inserting one-by-one. Iterators have O(1) time amortized per increment/decrement, and O(log(N)) worst time per increment/decrement. Of course, O(1) for access. There are some paradoxical result: in very small arrays (4-8 elements), they behave worse due to iterator initialization.
+Nodes by itself are not used. Each node contains subtree, and the number of elements in the whole subtree is 
+contained in nums. Please read the operator[] and function find_leaf(...)const, and you will understand how 
+it is organized. 
+
+The tree is balanced, that guarantees that it will have log time even in the worst case. 
+Please read function __check_consistency() to understand requirements. The most part of code is 
+balancing/merging/splitting leaves/branches. Two parameters of array regulate maximum amount of elements 
+in a leaf and children in a branch. It's a tradeoff between performance and memory consumption. When array is 
+small, it contains only one leaf (no branches), so it behaves almost as fast as vector. See test results.
+
+There are two speed-ups: multiple insertions/deletions and iterators. Multiple insertions/deletions are still 
+O(log(N)) per each element, but are by constant faster than inserting one-by-one. Iterators have O(1) 
+time amortized per increment/decrement, and O(log(N)) worst time per increment/decrement. 
+Of course, O(1) for access. There are some paradoxical result: in very small arrays (4-8 elements), 
+they behave worse due to iterator initialization.
+
+
 
 TESTS
-You can find two performance tests, description/results14_28.txt and results14_124.txt, corresponding to different numbers of elements per leaf. They were generated at my machine by the test above. See functions SingleOperationPerformanceCheck and MultipleOperationsTest.
-It's obviously that my array behaves only slightly worse than vector on small arrays, mostly not worse than 2 times (remember, it can have only one leaf), and outperforms vector on large arrays in insert/delete. Well, random access takes O(log(N)), because everything has a price.
-Note, that the tests are real. The performance depends on total amount of data. So, if I make experiment with one array, it will fit in computer's cache, if I perform it with 1000 arrays, there will be cache misses. That's why results averaged on 1 array and results averaged on 1000 arrays can differ.
-Of course, if you see 0, you should not trust it, because this means that operations were performed in less than one computer tick. That's why I did 10000 experiments for small arrays, and 1 experiment for large arrays.
-And the last, tests include not only operations, but also additional stuff like cycles etc.
-So, results are only estimation of behaviour. But they show the real tendencies.
+
+You can find two performance tests, description/results14_28.txt and results14_124.txt, corresponding to 
+different numbers of elements per leaf. They were generated at my machine by the test above. 
+See functions SingleOperationPerformanceCheck and MultipleOperationsTest.'It's obviously that my array 
+behaves only slightly worse than vector on small arrays, mostly not worse than 2 times 
+(remember, it can have only one leaf), and outperforms vector on large arrays in insert/delete. 
+Well, random access takes O(log(N)), because everything has a price.
+
+Note, that the tests are real. The performance depends on total amount of data. So, if I make experiment 
+with one array, it will fit in computer's cache, if I perform it with 1000 arrays, there will be cache misses. 
+That's why results averaged on 1 array and results averaged on 1000 arrays can differ.
+Of course, if you see 0, you should not trust it, because this means that operations were performed 
+in less than one computer tick. That's why I did 10000 experiments for small arrays, 
+and 1 experiment for large arrays. And the last, tests include not only operations, but also additional stuff 
+like cycles etc. So, results are only estimation of behaviour. But they show the real tendencies.
+
+
 
 NOVELTY AND BENEFITS
+
 1. Comparing to the std::vector, it behaves better on large arrays when insertions/deletions are frequent.
-2. Comparing to the std::vector, it prevents us from fragmentation, because all leaves and branches have similar size. So if we create array, then delete half of it (by freeing branches/leaves), then add new elements (by allocating branches/leaves), new leaves/branches will be in the place of deleted ones. Ideally, all branches and leaves for all types should be of the same size.
-3. Comparing to other similar implementations, I believe it's faster by a constant factor. For example, rope has binary inner branches. To reach a leaf, I need to check more nodes (which occupy different cache pages by the way),  so the radix of logarithm is more. On the other hand, when my array reaches leaf, it examines fat branch (while the computer loads the single cache-line). Fat leaves are also benefits, especially for chars. Fat leaves allow us to run iterators faster (I examined code for summation of array of int, it took 8 assembler instructions for my array versus 4 assembly instructions for std::vector per iteration). When array is small, it has only one leaf and behaves almost like vector.
-4. Shallow copying. (See below.) It is not currently implemented. However, I did not heard about such a feature at all. Please write me, if you know.
+
+2. Comparing to the std::vector, it prevents us from fragmentation, because all leaves and branches have 
+similar size. So if we create array, then delete half of it (by freeing branches/leaves), 
+then add new elements (by allocating branches/leaves), new leaves/branches will be in the place of deleted ones. 
+Ideally, all branches and leaves for all types should be of the same size.
+
+3. Comparing to other similar implementations, I believe it's faster by a constant factor. 
+For example, rope has binary inner branches. To reach a leaf, I need to check more nodes 
+(which occupy different cache pages by the way),  so the radix of logarithm is more. 
+On the other hand, when my array reaches leaf, it examines fat branch (while the computer loads 
+the single cache-line). Fat leaves are also benefits, especially for chars. Fat leaves allow us 
+to run iterators faster (I examined code for summation of array of int, it took 8 assembler instructions 
+for my array versus 4 assembly instructions for std::vector per iteration). When array is small, 
+it has only one leaf and behaves almost like vector.
+
+4. Shallow copying. (See below.) It is not currently implemented. However, I did not heard 
+about such a feature at all. Please write me, if you know.
+
+
 
 FURTHER PLANS
+
 1. To improve all things that community advices me.
+
 2. To compare performance of my container with similar others.
-3. Feature - shallow copying. If first string is a copy of a second string and you modify part of it, the common part is kept in memory only once. Memory saving. You will be able to make as many shallow copies as necessary. Please write me, if you know about such feature implemented. I think it's quite new.
-4. Feature - non-intrusive array. I plan to do it by wrapping around the current array. But maybe it can be done by using some sort of smart pointers. Any ideas?
-5. Feature - persistent bookamrks. The bookmark (sort of persistent iterator) follows the specific element, no matter how many elements are deleted before/after. I'm not sure it is compatible with option 3, but I'll start implement and see.
+
+3. Feature - shallow copying. If first string is a copy of a second string and you modify part of it, 
+the common part is kept in memory only once. Memory saving. You will be able to make as many shallow copies 
+as necessary. Please write me, if you know about such feature implemented. I think it's quite new.
+
+4. Feature - non-intrusive array. I plan to do it by wrapping around the current array. 
+But maybe it can be done by using some sort of smart pointers. Any ideas?
+
+5. Feature - persistent bookamrks. The bookmark (sort of persistent iterator) follows the specific element, 
+no matter how many elements are deleted before/after. I'm not sure it is compatible with option 3, 
+but I'll start implement and see.
+
+
 
 QUESTIONS
 Among other comments, please answer on the following questions.
-1. Are you sure that my container should mimick std::vector interface at any cost, even if performance drops several times. I believe it should not. std::vector has its own interface, which is convinient for hiding its pointers. If I implemented insert(iterator pos, T& t), the user would call it aa.insert(aa.begin()+n,t) instead of aa.insert(n,t), which will cause finding the first element in array, then jumping by n (finding another element) and then third time - modifying the path near nth element. Three times climbing down the tree instead of one. I believe that random access iterators are good for std::vector (emulating old pointers), but bad for my array. That's my opinion. But I want to listen the opinion of the society.
-2. Many people don't like it's name. As for me, alex_kupriianov array sounds like music. But I know, tastes differ. So, if you don't like the name, provide your own and we'll vote.
+
+1. Are you sure that my container should mimick std::vector interface at any cost, 
+even if performance drops several times. I believe it should not. std::vector has its own interface, 
+which is convinient for hiding its pointers. If I implemented insert(iterator pos, T& t), 
+the user would call it aa.insert(aa.begin()+n,t) instead of aa.insert(n,t), 
+which will cause finding the first element in array, then jumping by n (finding another element) 
+and then third time - modifying the path near nth element. Three times climbing down the tree instead of one. 
+I believe that random access iterators are good for std::vector (emulating old pointers), but bad for my array. 
+That's my opinion. But I want to listen the opinion of the society.
+
+2. Many people don't like it's name. As for me, alex_kupriianov array sounds like music. 
+But I know, tastes differ. So, if you don't like the name, provide your own and we'll vote.

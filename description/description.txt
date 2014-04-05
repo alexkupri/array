@@ -98,10 +98,11 @@ performs 16 cache reads. If branching factor is 32 (my array), it performs 3-4 c
 M and N so that branch and leaf fit into one cache line.) Secondly, there is also such a factor named virtual memory. 
 Memory in PC is divided into pages of 4096 bytes. Each page in virtual address space is mounted on a page in 
 hardware memory. And you need to go to lookup table if you want to access another page. There is TLB 
-buffer for caching this correspondence, but it is limited. And the last reason: rope is not always balanced.
+buffer for caching this correspondence, but it is limited. Thirdly, rope is not always balanced.
 It balances itself from time to time at certain conditions (causing performance jitter by the way). My container
-is balanced after each operation. I explain these reasons so detailed, because some people 
-really believed that rope can outperform alex_kupriianov_array.
+is balanced after each operation. Forthly, rope calls malloc/free much more often, having binary nodes.
+I explain these reasons so detailed, because some people really believed 
+that rope can outperform alex_kupriianov_array.
 
 
 

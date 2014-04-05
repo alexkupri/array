@@ -13,6 +13,9 @@ DESCRIPTION
 /trunk/alex_kupriianov_array2.h - implementation of container
 /trunk/main.cpp - test of container
 
+/performance/ directory contains performance comparisons with other containers, so you can see how I obtained 
+performance results, and whether am I honest enough. But it is machine-specific.
+
 In the first version the amount of the code is small, <1000 lines for implementation, <700 for declaration. 
 But I'll give you hints and you'll understand the whole concept by reading about 150 selected lines of code.
 
@@ -31,6 +34,26 @@ struct Leaf:public Node ...
 Nodes by itself are not used. Each node contains subtree, and the number of elements in the whole subtree is 
 contained in nums. Please read the operator[] and function find_leaf(...)const, and you will understand how 
 it is organized. 
+                             +-----------+
+                             | 7   6   6 |
+                             +-|---|---|-+
+                               |   |   |
+            +------------------+   |   +------------------+
+            |                      |                      |
+            v                      v                      v
+      +-----------+            +-------+          +--------+
+      | 2   2   3 |            | 3   3 |          | 2   4  |
+      +-|---|---|-+            +-|---|-+          +-|---|--+
+        |   |   |                |   |              |   |       
+   +----+  ++   +---+         +--+   +--+       +---+ +-+   
+   |       |        |         |         |       |     |     
+   v       v        v         v         v       v     v     
++-----+ +-----+ +-------+ +-------+ +-------+ +-----+ +---------+
+| A B | | C D | | E F G | | H I J | | K L M | | N O | | P Q R S |
++-----+ +-----+ +-------+ +-------+ +-------+ +-----+ +---------+
+
+This picture is possible. However, for practical purpose leaf should contain 14 to 28 elements (M=28), 
+branch should contain 7 to 14 children (L=14). In the picture M=L=4, both branch and leaf contain from 2 to 4 items.
 
 The tree is balanced, that guarantees that it will have log time even in the worst case. 
 Please read function __check_consistency() to understand requirements. The most part of code is 
@@ -62,6 +85,23 @@ Of course, if you see 0, you should not trust it, because this means that operat
 in less than one computer tick. That's why I did 10000 experiments for small arrays, 
 and 1 experiment for large arrays. And the last, tests include not only operations, but also additional stuff 
 like cycles etc. So, results are only estimation of behaviour. But they show the real tendencies.
+
+ROPE TEST
+On April 5, 2014, I performed comparison with __gnu_cxx::rope which is the same as cgi rope. Ofcourse, rope
+behaves logarithmically, but alex_kupriianov_array outperforms it by roughly 10 times, even in random access.
+You can find the code in "/performance" directory and the result in "rope_vs_alex_kupriianov_array14_28.txt" file.
+
+The reasons why alex_kupriianov_array behaves much better than rope are clear.
+Firstly, real machine loads a cache line (typically 128 bytes, 64 on some machines) from main memory to cache and 
+then operates on it. If branching factor is 2 (rope), array size is 2**16 and nodes scattered randomly, it 
+performs 16 cache reads. If branching factor is 32 (my array), it performs 3-4 cache line read (I've chosen 
+M and N so that branch and leaf fit into one cache line.) Secondly, there is also such a factor named virtual memory. 
+Memory in PC is divided into pages of 4096 bytes. Each page in virtual address space is mounted on a page in 
+hardware memory. And you need to go to lookup table if you want to access another page. There is TLB 
+buffer for caching this correspondence, but it is limited. And the last reason: rope is not always balanced.
+It balances itself from time to time at certain conditions (causing performance jitter by the way). My container
+is balanced after each operation. I explain these reasons so detailed, because some people 
+really believed that rope can outperform alex_kupriianov_array.
 
 
 
@@ -121,3 +161,7 @@ That's my opinion. But I want to listen the opinion of the society.
 
 2. Many people don't like it's name. As for me, alex_kupriianov array sounds like music. 
 But I know, tastes differ. So, if you don't like the name, provide your own and we'll vote.
+Current list:
+alex_kupriianov_array
+array
+brope

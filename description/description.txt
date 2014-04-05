@@ -19,7 +19,8 @@ performance results, and whether am I honest enough. But it is machine-specific.
 In the first version the amount of the code is small, <1000 lines for implementation, <700 for declaration. 
 But I'll give you hints and you'll understand the whole concept by reading about 150 selected lines of code.
 
-Well, let's discover some details. It mixes concepts of so-called rope and BTree. Now it's intrusive. 
+Well, let's discover some details. It mixes concepts of so-called rope and BTree. Now has fat leaves, 
+which contain elements by values. 
 It takes O(log(N)) for insert and erase, but it takes O(log(N)) for random access as well.
 
 There is a tree inside. It consists of Branches and Leaves. The hierarchy is the following:
@@ -139,7 +140,9 @@ FURTHER PLANS
 the common part is kept in memory only once. Memory saving. You will be able to make as many shallow copies 
 as necessary. Please write me, if you know about such feature implemented. I think it's quite new.
 
-4. Feature - non-intrusive array. I plan to do it by wrapping around the current array. 
+4. Feature - thin leaves, which contain not elements, but pointers to elements. It's better to have fat leaves for 
+atomic types (char,int) and simple structures and thin leaves for large elements or elements which are hard to copy.
+I plan to do it by wrapping around the current array. 
 But maybe it can be done by using some sort of smart pointers. Any ideas?
 
 5. Feature - persistent bookamrks. The bookmark (sort of persistent iterator) follows the specific element, 

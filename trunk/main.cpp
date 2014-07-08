@@ -1,56 +1,84 @@
 //  Copyright (C) 2014 by Aleksandr Kupriianov
-//  alexkupri at gmail dot com
+//  email: alexkupri host: gmail dot com
 
 //  Purpose: fast array tests and usage examples
 
+//#define enable_nomem_tests
+//#define use_linux_timer
+//#define use_linux_mallinfo
+//#define test_vstadnik_container
+//#define test_cxx_rope
+
 #include <stdlib.h>
-#include <deque>
+#include <deque> 
 #include <vector>
 #include <list>
 #include <iostream>
 #include <sstream>
 #include <fstream>
 #include <iomanip>
-#include "alex_kupriianov_array.h"
-
+#include <algorithm>
+#include <cmath>
+#include "btree_seq.h"
+ 
 using namespace std;
 
 int artific_exceptions=0;
 enum {MM=4,NN=4};
 
-#ifdef __linux__
-#ifdef __GNUC__
-#define using_mallinfo_memleak_detection
-#endif
-#endif
+#define next_rand(aa)  {unsigned long long int val=aa; val=val*val; val=val%4098342361ULL; aa=val;}
 
-#ifdef using_mallinfo_memleak_detection
-#include <ext/throw_allocator.h>
+#ifdef use_linux_mallinfo
 #include <malloc.h>
-#include <sys/timeb.h>
 int UsedMem()
 {
 	struct mallinfo a=mallinfo();
 	return a.uordblks;
 }
+#define memleak_str "Also checking for memory leaks."
+#else
+int UsedMem(){return 0;}
+#define memleak_str "Not using memory leak detection (currently available on linux/gnuc)."
+#endif
+
+#ifdef use_linux_timer
+#include <sys/timeb.h>
 double MSec()
 {
 	struct timeb t1;
 	ftime(&t1);
 	return t1.time*1000.0+t1.millitm;
 }
-#define memleak_str "Also checking for memory leaks."
+double TimeQuant(){return 1;}
 #define time_str "Calculating time, precision is milliseconds."
 #else
 #include <ctime>
-int UsedMem(){return 0;}
 double MSec()
 {
 	clock_t t=clock();
 	return t*1000.0/CLOCKS_PER_SEC;
 }
-#define memleak_str "Not using memory leak detection (currently available on linux/gnuc)."
-#define time_str "Time prececision is seconds."
+double __time_quant=-1;
+double TimeQuant()
+{
+	if(__time_quant<0){
+		int j;
+		clock_t prev,cur;
+		double val=1e50,tmp;
+		for(j=0;j<100;j++){
+			prev=clock();
+			do{
+				cur=clock();
+			}while(cur==prev);
+			tmp=1000.0*((double)cur-prev)/CLOCKS_PER_SEC;
+			if(tmp<val){
+				val=tmp;
+			}
+		}
+		__time_quant=val;
+	}
+	return __time_quant;
+}
 #endif
 
 //================ Class for counting memory and time ==============
@@ -79,10 +107,10 @@ TestDescriptor::~TestDescriptor()
 }
 
 //========== Container class for comparing results =================
-template <typename T,typename Alloc=default_memory_operator<T> >
+template <typename T,typename Alloc=std::allocator<T> >
 class MultipleChecker
 {
-	alex_kupriianov_array<T,MM,NN,Alloc> aka;
+	btree_seq<T,MM,NN,Alloc> aka;
 	vector<T> vi;
 	void Check();
 	int i1,im,d1,dm;
@@ -150,7 +178,7 @@ void MultipleChecker<T,Alloc>::erase(int pos)
 		cout<<"Del "<<pos<<";"<<vi.size()<<"\n";
 	}
 	vi.erase(vi.begin()+pos);
-	aka.erase(pos);
+	aka.erase(pos,pos+1);
 	Check();
 	d1++;
 }
@@ -300,6 +328,7 @@ void PerformCheck(T &t,const V &vi,int cycles,int rd,int i1,int d1,int im,int ed
 				if(q<edge){
 					n=t.size();
 				}
+				//cout<<"single ins\n";
 				t.insert((unsigned int)n,vi[l]);
 			}
 		}else if(k<d1){
@@ -310,7 +339,7 @@ void PerformCheck(T &t,const V &vi,int cycles,int rd,int i1,int d1,int im,int ed
 				if(q<edge){
 					n=t.size()-1;
 				}
-				t.erase(n);
+				t.erase(n,n+1);
 			}
 		}else if(k<im){
 			if((n<=t.size())&&(t.size()<SZ)&&(l<=m)){
@@ -320,6 +349,7 @@ void PerformCheck(T &t,const V &vi,int cycles,int rd,int i1,int d1,int im,int ed
 				if(q<edge){
 					n=t.size();
 				}
+				//cout<<"multiple ins\n";
 				t.insert(n,&vi[l],&vi[m]);
 			}
 		}else{
@@ -357,7 +387,7 @@ void SetVec(vector<int> &inpvect,int val,int num)
 void BasicTest_Int()
 {
 	TestDescriptor t1("Simple test for correctness by comparing results "
-		"of four operations with vector and alex_kupriianov_array.");
+		"of four operations with vector and btree_seq.");
 	{
 		MultipleChecker<int> mc;
 		vector<int> vi;
@@ -400,15 +430,16 @@ int SumIters(Iter begin,Iter end)
 	return res;
 }
 
-void SubTest_Iterators(vector<int> &vi,alex_kupriianov_array<int,MM,NN> &aka)
+void SubTest_Iterators(vector<int> &vi,btree_seq<int,MM,NN> &aka)
 {
 	int j;
 	size_t k=0;
 	vector<int>::iterator vii=vi.begin(),viend=vi.end();
-	alex_kupriianov_array<int,MM,NN>::iterator akai=aka.begin(),akaend=aka.end(),empty;
+	//aka.__prepare_list();
+	btree_seq<int,MM,NN>::iterator akai=aka.begin(),akaend=aka.end(),empty;
 	for(;;){
 		assert(*akai==*vii);
-		assert(akai.GetAbsolutePosition()==k);
+		assert(akai.get_position()==k);
 		assert(akai!=akaend);
 		for(j=0;j<10;j++){
 			vii++;
@@ -424,14 +455,14 @@ void SubTest_Iterators(vector<int> &vi,alex_kupriianov_array<int,MM,NN> &aka)
 		k++;		
 	}
 	assert(akai==akaend);
-	const alex_kupriianov_array<int,MM,NN> &caka=aka;
-	alex_kupriianov_array<int,MM,NN>::iterator 
+	const btree_seq<int,MM,NN> &caka=aka;
+	btree_seq<int,MM,NN>::iterator
 		mut_fwd_1=aka.begin(),mut_fwd_2=aka.end();
-	alex_kupriianov_array<int,MM,NN>::const_iterator 
+	btree_seq<int,MM,NN>::const_iterator
 		con_fwd_1=caka.begin(),con_fwd_2=caka.end();
-	alex_kupriianov_array<int,MM,NN>::reverse_iterator 
+	btree_seq<int,MM,NN>::reverse_iterator
 		mut_bck_1=aka.rbegin(),mut_bck_2=aka.rend();
-	alex_kupriianov_array<int,MM,NN>::const_reverse_iterator 
+	btree_seq<int,MM,NN>::const_reverse_iterator
 		con_bck_1=caka.rbegin(),con_bck_2=caka.rend();
 	assert(SumIters(mut_fwd_1,mut_fwd_2)==SumIters(vi.begin(),vi.end()));
 	assert(SumIters(mut_bck_1,mut_bck_2)==SumIters(vi.begin(),vi.end()));
@@ -439,13 +470,68 @@ void SubTest_Iterators(vector<int> &vi,alex_kupriianov_array<int,MM,NN> &aka)
 	assert(SumIters(con_bck_1,con_bck_2)==SumIters(vi.begin(),vi.end()));	
 }
 
+class SumVisitor
+{
+	int sum;
+public:
+	SumVisitor():sum(0){};
+	bool operator()(int v){sum+=v;return false;}
+	int get_sum(){return sum;}
+};
+
+class FindVisitor
+{
+	int val;
+public:
+	FindVisitor(int valval):val(valval){};
+	bool operator()(int v){return v==val;}
+};
+
+void SubTest_Visitors(btree_seq<int,MM,NN> &aka)
+{
+	int sum=0,val=rand()%42;
+	size_t found,j;
+	size_t v1=rand()%(aka.size()+1),v2=rand()%(aka.size()+1);
+	if(v1>v2){
+		swap(v1,v2);
+	}
+	if((rand()&7)==7){
+		v1=0;
+	}
+	if((rand()&7)==7){
+		v2=aka.size();
+	}
+	if((rand()&7)==7){
+		v1=v2;
+	}
+	FindVisitor fv(val);
+	SumVisitor sv;
+	found=aka.visit(v1,v2,fv);
+	assert(aka.visit(v1,v2,sv)==v2);
+	for(j=v1;j<v2;j++){
+		sum+=aka[j];
+	}
+	assert(sum==sv.get_sum());
+	for(j=v1;j<found;j++){
+		if(aka[j]==val){
+			aka.__output(cout);
+			cout<<"v1="<<v1<<" v2="<<v2<<" val="<<val<<" found="<<found<<"\n";
+		}
+		assert(aka[j]!=val);
+	}
+	assert(found<=v2);
+	if(found<v2){
+		assert(aka[found]==val);
+	}
+}
+
 void IteratorsTest_Int()
 {
-	TestDescriptor t1("Test with iterators.");
+	TestDescriptor t1("Test with iterators and visitors.");
 	{
 		int j,k,l,m;
 		vector<int> vi1,vi2;
-		alex_kupriianov_array<int,MM,NN> aka1,aka2;
+		btree_seq<int,MM,NN> aka1,aka2;
 		SetVec(vi1,0,200);
 		aka1.insert(0,vi1.begin(),vi1.end());
 		for(j=0;j<1000;j++){
@@ -457,9 +543,11 @@ void IteratorsTest_Int()
 			if(k>l){
 				swap(k,l);
 			}
-			aka2.insert(m,aka1.at(k),aka1.at(l));
+			//aka1.__prepare_list();
+			aka2.insert(m,aka1.iterator_at(k),aka1.iterator_at(l));
 			vi2.insert(vi2.begin()+m,vi1.begin()+k,vi1.begin()+l);
 			SubTest_Iterators(vi2,aka2);
+			SubTest_Visitors(aka2);
 		}
 	}	
 }
@@ -468,14 +556,33 @@ void TestFill_Int()
 {
 	TestDescriptor t1("Test with fill functions (iterators being checked).");
 	{
-		alex_kupriianov_array<int,MM,NN> aka1,aka2;
+		size_t j;
+		btree_seq<int,MM,NN> aka1,aka2;
 		aka1.fill(0,40,1);
 		aka1.fill(0,40,0);
 		aka1.fill(80,40,2);
 		aka2.fill(0,100,3);
 		aka2=aka1;
-		alex_kupriianov_array<int,MM,NN> aka3(aka2.rbegin(),aka2.rend());
-		alex_kupriianov_array<int,MM,NN> aka4(aka3);
+		btree_seq<int,MM,NN> aka3(aka2.rbegin(),aka2.rend());
+		btree_seq<int,MM,NN> aka4(aka3);
+		assert(aka1.size()==aka2.size());
+		assert(aka1.size()==aka3.size());
+		assert(aka1.size()==aka4.size());
+		for(j=0;j<aka1.size();j++){
+			assert(aka1[j]==aka2[j]);
+			assert(aka1[j]==aka3[aka1.size()-1-j]);
+			assert(aka3[j]==aka4[j]);
+		}
+		int k[10]={1,2,3,4,5,6,7,8,9,10};
+		std::list<int> li(k,k+10);
+		btree_seq<int,MM,NN> aka5(li.begin(),li.end());
+		assert(aka5.size()==10);
+		for(j=0;j<aka5.size();j++){
+			assert(aka5[j]==(int)j+1);
+		}
+		vector<IntContainer> vic;
+		vic.resize(50);
+		btree_seq<IntContainer,MM,NN> aka6(vic.begin(),vic.end());
 	}	
 }
 
@@ -483,11 +590,10 @@ void TestCopyExceptions()
 {
 	TestDescriptor t1("Test for exception handling. When objects are copied, they throw exceptions.");
 	{
-	int j,k,num,inspl;
-	size_t l,m;
-	bool exceptioned;
-	int sizes[10]={0,1,2,4,8, 15,20,50,70,100};
-	{
+		int j,k,num,inspl;
+		size_t l,m;
+		bool exceptioned;
+		int sizes[10]={0,1,2,4,8, 15,20,50,70,100};
 		for(j=0;j<10;j++){
 			for(k=1;k<10;k++){
 				vector<IntContainer> vi1,vi2;//vi1 can be empty,vi2 cannot
@@ -501,7 +607,7 @@ void TestCopyExceptions()
 				for(l=0;l<vi2.size();l++){
 					vi2[l].set(l);
 				}
-				alex_kupriianov_array<IntContainer,MM,NN> aka(vi1.begin(),vi1.end());
+				btree_seq<IntContainer,MM,NN> aka(vi1.begin(),vi1.end());
 				for(l=0;l<50;l++){
 					num=rand()%vi2.size();
 					inspl=rand()%(vi1.size()+1);
@@ -560,64 +666,363 @@ void TestCopyExceptions()
 				}
 			}
 		}	
-	}
 	}	
 }
 
-void TestFastAllocator()
+class NormalTest
 {
-	TestDescriptor t1("Test with fast allocator (which uses memcpy).");
+public:
+	typedef btree_seq<IntContainer,4,4> container;
+	static void SetProb(double){};
+};
+	
+template <typename TestType>
+void AttachTest()
+{
+	int exceptions=0;
+	TestDescriptor t1("Attach test.");
 	{
-		MultipleChecker<int,fast_memory_operator<int> > mc;
-		vector<int> vi;
-		SetVec(vi,0,600);
-		PerformCheck(mc,vi,600000,75,85,95,98,10);
-		PerformCheck(mc,vi,600000,75,85,95,98,50);
-		PerformCheck(mc,vi,600000,50,60,90,100,10);
-		PerformCheck(mc,vi,600000,50,95,95,95,10);
-		PerformCheck(mc,vi,600000,75,85,95,98,10);
+		int n=120,j,k,l;
+		vector<IntContainer> vi;
+		vi.resize(n);
+		for(j=0;j<n;j++){
+			vi[j].set(j);
+		}
+		for(j=0;j<n;j++){
+			for(k=0;j+k<n;k++){
+				TestType::SetProb(0);
+				typename TestType::container a1(vi.begin(),vi.begin()+j),
+					a2(vi.begin()+j,vi.begin()+j+k);
+				TestType::SetProb(0.05);
+			retry:
+				try{
+					a1.concatenate_right(a2);
+				}catch(...){
+					a1.__check_consistency();
+					a2.__check_consistency();
+					exceptions++;
+					goto retry;
+				}
+				a1.__check_consistency();
+				a2.__check_consistency();
+				assert(a1.size()==j+k);
+				assert(a2.size()==0);
+				for(l=0;l<j+k;l++){
+					assert(a1[l].get()==l);
+				}
+			}
+		}
+		cout<<"Exceptions: "<<exceptions<<"\n";
+	}
+}
+
+template <typename TestType>
+void DetachTest()
+{
+	int exceptions=0;
+	TestDescriptor t1("Detach test.");
+	{
+		int n=120,j,k,l;
+		vector<IntContainer> vi;
+		vi.resize(n);
+		for(j=0;j<n;j++){
+			vi[j].set(j);
+		}
+		for(j=0;j<n;j++){
+			for(k=0;k<=j;k++){
+				TestType::SetProb(0);
+				typename TestType::container a1(vi.begin(),vi.begin()+j),
+					a2;
+				TestType::SetProb(0.05);
+			retry:
+				try{
+					a1.split_right(a2,k);
+				}catch(...){
+					a1.__check_consistency();
+					exceptions++;
+					goto retry;
+				}
+				TestType::SetProb(0);
+				a1.__check_consistency();
+				a2.__check_consistency();
+				assert(a1.size()==k);
+				assert(a2.size()==j-k);
+				for(l=0;l<k;l++){
+					assert(a1[l].get()==l);
+				}								
+				for(l=0;l<j-k;l++){
+					assert(a2[l].get()==l+k);
+				}								
+			}
+		}
+		cout<<"Exceptions: "<<exceptions<<"\n";
 	}	
 }
 
-#ifdef using_mallinfo_memleak_detection
+void LeftTests()
+{
+	TestDescriptor t1("Left attach/detach test.");
+	{
+		int ia[10]={0,1,2,3,4,5,6,7,8,9},m;
+		btree_seq<int,MM,NN> a3(ia,ia+5),a4(ia+5,ia+10);
+		a4.concatenate_left(a3);
+		assert(a4.size()==10);
+		for(m=0;m<10;m++){
+			assert(a4[m]==m);
+		}
+		a4.split_left(a3,8);
+		assert(a3.size()==8);
+		for(m=0;m<8;m++){
+			assert(a3[m]==m);
+		}
+		assert(a4.size()==2);
+		for(m=0;m<2;m++){
+			assert(a4[m]==m+8);
+		}
+	}
+}
+
+void ResizeTest()
+{
+	TestDescriptor t1("Resize test.");
+	{
+		btree_seq<int,MM,NN> a1;
+		a1.resize(2);
+		a1[0]=a1[1]=1;
+		a1.resize(4,2);
+		assert((a1.size()==4)&&(a1[0]==1)&&(a1[1]==1)&&(a1[2]==2)&&(a1[3]==2));
+		a1.resize(3,5);
+		assert((a1.size()==3)&&(a1[0]==1)&&(a1[1]==1)&&(a1[2]==2));
+	}
+}
+
+void AccessTest()
+{
+	TestDescriptor t1("Resize test.");
+	{
+		int ii[6]={0,1,2,3,4,5};
+		bool exception_occured=false;
+		btree_seq<int,MM,NN> a(ii,ii+6);
+		assert(a.at(3)==3);
+		assert(a.front()==0);
+		assert(a.back()==5);
+		try{
+			a.at(8)=8;
+		}catch(...){
+			exception_occured=true;
+		}
+		assert(exception_occured);
+	}
+}
+
+struct S2{
+	char c;
+	int x;
+};
+
+void AssignTest()
+{
+	TestDescriptor t1("Assign test.");
+	{
+		int ii[6]={0,1,2,3,4,5};
+		btree_seq<int,MM,NN> a;
+		btree_seq<int> b(3,4);
+		assert((b.size()==3)&&(b[0]==4)&&(b[1]==4)&&(b[2]==4));
+		a.assign(ii,ii+6);
+		assert((a.size()==6)&&(a[0]==0)&&(a[5]==5));
+		a.assign(3,-1);
+		assert((a.size()==3)&&(a[0]==-1)&&(a[1]==-1)&&(a[2]==-1));
+		btree_seq<S2,MM,NN> aks1,aks2;
+		S2 s2={'z',6},s3={'q',7};
+		aks1.assign(3,s2);
+		aks1.assign(3,s3);
+		assert((aks1.size()==3)&&(aks1[0].x==7)&&(aks1[1].x==7)&&(aks1[2].x==7));
+		aks1.resize(4,s2);
+		aks2.assign(aks1.begin(),aks1.end());
+		assert((aks2.size()==4)&&(aks2[0].x==7)&&(aks2[1].x==7)&&(aks2[2].x==7)&&(aks2[3].x==6));
+	}
+}
+
+void PushPopTest()
+{
+	TestDescriptor t1("PushPop test.");
+	{
+		int ii[3]={1,2,3};
+		btree_seq<int,MM,NN> a(ii,ii+3);
+		assert((a.size()==3)&&(a[0]==1)&&(a[1]==2)&&(a[2]==3));
+		a.push_front(0);
+		assert((a.size()==4)&&(a[0]==0)&&(a[1]==1)&&(a[2]==2)&&(a[3]==3));
+		a.push_back(4);
+		assert((a.size()==5)&&(a[0]==0)&&(a[1]==1)&&(a[2]==2)&&(a[3]==3)&&(a[4]==4));
+		a.pop_front();
+		assert((a.size()==4)&&(a[0]==1)&&(a[1]==2)&&(a[2]==3)&&(a[3]==4));
+		a.pop_back();
+		assert((a.size()==3)&&(a[0]==1)&&(a[1]==2)&&(a[2]==3));
+	}
+}
+
+void InsertIteratorTest()
+{
+	TestDescriptor t1("Insert via iterator test.");
+	{
+		int ii[3]={10,20,30};
+		btree_seq<int,MM,NN> a(ii,ii+3);
+		btree_seq<int,MM,NN>::iterator it,i2;
+		btree_seq<int,MM,NN>::const_iterator cit,ci2;
+		it=a.begin();
+		i2=it;
+		cit=it;
+		//it=cit; //must not compile
+		btree_seq<int,MM,NN>::iterator it3(it)/*,it4(cit)*/;
+		btree_seq<int,MM,NN>::const_iterator ci3(it),ci4(cit);
+		assert((a.size()==3)&&(a[0]==10)&&(a[1]==20)&&(a[2]==30));
+		//
+		it=a.insert(a.begin()+2,21);
+		assert(*it==21);
+		assert((a.size()==4)&&(a[0]==10)&&(a[1]==20)&&(a[2]==21)&&(a[3]==30));
+		//
+		it=a.insert(a.begin()+3,2,22);
+		assert(*it==22);
+		assert((a.size()==6)&&(a[0]==10)&&(a[1]==20)&&(a[2]==21)&&(a[3]==22)&&(a[4]==22)&&(a[5]==30));
+		//
+		it=a.insert(a.begin(),ii,ii+3);
+		assert(*it==10);
+		assert((a.size()==9)&&(a[0]==10)&&(a[1]==20)&&(a[2]==30)&&(a[3]==10));
+	}
+}
+
+void EraseIteratorTest()
+{
+	TestDescriptor t1("Erase test.");
+	{
+		int ii[6]={0,1,2,3,4,5};
+		btree_seq<int,MM,NN> a(ii,ii+6);
+		btree_seq<int,MM,NN>::iterator it;
+		it=a.erase(a.begin()+1);
+		assert(*it==2);
+		it=a.erase(a.begin()+2,a.begin()+4);
+		assert(*it==5);
+		assert((a.size()==3)&&(a[0]==0)&&(a[1]==2)&&(a[2]==5));
+	}
+}
+
+void RelationsTest()
+{
+	TestDescriptor t1("Relations test.");
+	{
+		btree_seq<int> a(3,0),b(2,1);
+		//
+		assert((a==a)==true);
+		assert((a==b)==false);
+		assert((b==a)==false);
+		//
+		assert((a!=a)==false);
+		assert((a!=b)==true);
+		assert((b!=a)==true);
+		//
+		assert((a<a)==false);
+		assert((a<b)==true);
+		assert((b<a)==false);
+		//
+		assert((a<=a)==true);
+		assert((a<=b)==true);
+		assert((b<=a)==false);
+		//
+		assert((a>a)==false);
+		assert((a>b)==false);
+		assert((b>a)==true);
+		//
+		assert((a>=a)==true);
+		assert((a>=b)==false);
+		assert((b>=a)==true);
+	}
+}
+
+#ifdef enable_nomem_tests
+#include <ext/throw_allocator.h>
 void TestNoMemExceptions()
 {
 	TestDescriptor t1("Test imitating nomemory exception.");
 	{
-		__gnu_cxx::throw_allocator_base::set_throw_prob(0.01);
-		__gnu_cxx::throw_allocator<int> t;t.init(10);
-		MultipleChecker<int,fast_memory_operator<int,__gnu_cxx::throw_allocator<int> > > mc;
-		vector<int> vi;
-		SetVec(vi,0,60);
+		__gnu_cxx::random_condition::set_probability(0.01);
+		//__gnu_cxx::throw_allocator<IntContainer> t;t.init(10);
+		MultipleChecker<IntContainer,__gnu_cxx::throw_allocator_random<IntContainer> > mc;
+		vector<IntContainer> vi;
+		int j,n=60;
+		vi.resize(n);
+		for(j=0;j<n;j++){
+			vi[j].set(j);
+		}
 		PerformCheck(mc,vi,600000,75,85,95,98,10);
 		PerformCheck(mc,vi,600000,75,85,95,98,50);
 		PerformCheck(mc,vi,600000,50,60,90,100,10);
 		PerformCheck(mc,vi,600000,50,95,95,95,10);
 		PerformCheck(mc,vi,600000,75,85,95,98,10);
-	}	
+	}
+}
+class ExceptionTest
+{
+public:
+	typedef btree_seq<IntContainer,4,4,__gnu_cxx::throw_allocator_random<IntContainer> > container;
+	static void SetProb(double d){__gnu_cxx::random_condition::set_probability(d);}
+};
+void AttachExceptionTest()
+{
+	AttachTest<ExceptionTest>();
+}
+void DetachExceptionTest()
+{
+	DetachTest<ExceptionTest>();
 }
 #else
 void TestNoMemExceptions()
 {
-	cout<<"The rare test for correct nomem behaviour is available only for Linux.\n";
+	cout<<"The general no-memory test is switched off.\n";
+}
+void AttachExceptionTest()
+{
+	cout<<"The attach no-memory test is switched off.\n";
+}
+void DetachExceptionTest()
+{
+	cout<<"The detach no-memory test is switched off.\n";
 }
 #endif
 
 void CorrectnessTestBundle()
 {
+	//Functionality tests
 	BasicTest_Int();
 	BasicTest_IntContainer();	
 	IteratorsTest_Int();
 	TestFill_Int();
-	TestFastAllocator();
-	TestCopyExceptions();
+	AttachTest<NormalTest>();
+	DetachTest<NormalTest>();
+	LeftTests();
+	cout<<"\n";
+
+	//Syntactic sugar tests
+	ResizeTest();
+	AccessTest();
+	AssignTest();
+	PushPopTest();
+	InsertIteratorTest();
+	EraseIteratorTest();
+	RelationsTest();
+	cout<<"\n";
+
+	//Exception tests
 	TestNoMemExceptions();
-	cout<<"All tests passed. Success.\n";
+	TestCopyExceptions();
+	AttachExceptionTest();
+	DetachExceptionTest();
+	//
+	cout<<"\nAll tests passed. Success.\n";
 }
 
 //=============  Manual test ===================
 
-void DumpAAI(alex_kupriianov_array<int,MM,NN> &aai)
+void DumpAAI(btree_seq<int,MM,NN> &aai)
 {
 	size_t idx;
 	for(idx=0;idx<aai.size();idx++){
@@ -630,7 +1035,7 @@ void ManualTest()
 {
 	int command,idx,val,num,j;
 	vector<int> inpvect;
-	alex_kupriianov_array<int,MM,NN> aai;
+	btree_seq<int,MM,NN> aai;
 	for(;;){
 		cout<<"Options: 0-exit, 1-show all, 2-insert single, 3-insert multiple(the same)\n";
 		cout<<"Options: 4-delete, 5-delete multiple\n";
@@ -660,7 +1065,7 @@ void ManualTest()
 			case 4:
 				cout<<"Enter position for deletion:\n";
 				cin>>idx;
-				aai.erase(idx);
+				aai.erase(idx,idx+1);
 				break;			
 			case 5:
 				cout<<"Enter start and end+1 for deletion:\n";
@@ -678,8 +1083,6 @@ void ManualTest()
 
 //===================== Performance tests =============================
 
-enum {MMM=14,NNN=124};
-
 inline void insert_val(std::vector<int> &vi,int pos,int val)
 {
 	vi.insert(vi.begin()+pos,val);
@@ -690,12 +1093,7 @@ inline void insert_val(std::deque<int> &vi,int pos,int val)
 	vi.insert(vi.begin()+pos,val);
 } 
 
-inline void insert_val(alex_kupriianov_array<int,MMM,NNN> &akai,int pos,int val)
-{
-	akai.insert(pos,val);
-} 
-
-inline void insert_val(alex_kupriianov_array<int,MMM,NNN,fast_memory_operator<int> > &akai,int pos,int val)
+inline void insert_val(btree_seq<int> &akai,int pos,int val)
 {
 	akai.insert(pos,val);
 } 
@@ -710,121 +1108,257 @@ inline void erase_val(std::deque<int> &vi,int pos)
 	vi.erase(vi.begin()+pos);
 } 
 
-inline void erase_val(alex_kupriianov_array<int,MMM,NNN> &akai,int pos)
+inline void erase_val(btree_seq<int> &akai,int pos)
 {
-	akai.erase(pos);
+	akai.erase(akai.begin()+pos);
 } 
 
-inline void erase_val(alex_kupriianov_array<int,MMM,NNN,fast_memory_operator<int> > &akai,int pos)
+#ifdef test_cxx_rope
+#include <ext/rope>
+inline void insert_val(__gnu_cxx::rope<int> &vi,int pos,int val)
 {
-	akai.erase(pos);
-} 
+	vi.insert(pos,val);
+}
+inline void erase_val(__gnu_cxx::rope<int> &vi,int pos)
+{
+	vi.erase(pos,1);
+}
+int Visiting(__gnu_cxx::rope<int> &vi)
+{
+	int res=0;
+	__gnu_cxx::rope<int>::const_iterator vb=vi.begin(),ve=vi.end();
+	while(vb!=ve){
+		res+=*vb;
+		vb++;
+	}
+	return res;
+}
+#endif
+
+#ifdef test_vstadnik_container
+#include "bpt_sequence.hpp"
+inline void insert_val(std_ext_adv::sequence<int> &vi,int pos,int val)
+{
+	vi.insert(vi.begin()+pos,val);
+}
+
+inline void erase_val(std_ext_adv::sequence<int> &akai,int pos)
+{
+	akai.erase(akai.begin()+pos);
+}
+int Visiting(std_ext_adv::sequence<int> &vi)
+{
+	int res=0;
+	std_ext_adv::sequence<int>::const_iterator vb=vi.begin(),ve=vi.end();
+	while(vb!=ve){
+		res+=*vb;
+		vb++;
+	}
+	return res;
+}
+#endif
 
 template <class IntContainer>
 int SumArray(IntContainer &ic)
 {
 	int res=0;
-/*	int idx,n=ic.size();
-	for(idx=0;idx<n;idx++){
-		res+=ic[idx];
-	}*/
-	typename IntContainer::iterator it;
+	typename IntContainer::const_iterator it;
 	for(it=ic.begin();it!=ic.end();it++){
 		res+=(*it);
 	}
 	return res;
 }
- 
 
-template <class Container>
-void SingleOperationPerformanceCheck(ofstream &ofs,int elements,int maxsz)
+int Visiting(btree_seq<int> &aka)
+{
+	SumVisitor sv;
+	aka.visit(0,aka.size(),sv);
+	return sv.get_sum();
+} 
+
+int Visiting(vector<int> &vi)
+{
+	int res=0;
+	vector<int>::iterator vb=vi.begin(),ve=vi.end();
+	while(vb!=ve){
+		res+=*vb;
+		vb++;
+	}
+	return res;
+} 
+
+int Visiting(deque<int> &vi)
+{
+	int res=0;
+	deque<int>::iterator vb=vi.begin(),ve=vi.end();
+	while(vb!=ve){
+		res+=*vb;
+		vb++;
+	}
+	return res;
+} 
+
+double tolerance()
+{
+	return 0.01;
+}
+
+class TimeVal
+{
+	double sum,squared_sum;
+	int cycles;
+	double Error(){return sqrt(fabs(squared_sum/cycles-sum*sum/cycles/cycles))/
+			sqrt((double)cycles);}
+public:
+	void AddValue(double d){sum+=d;squared_sum+=d*d;cycles+=1;/*Dump();*/}
+	TimeVal():sum(0),squared_sum(0),cycles(0){};
+	double GetResult(){return sum/cycles;}
+	bool Valid(){return (cycles>=3)
+					&&(sum*tolerance()>TimeQuant())
+					/*&&(Error()<GetResult()*tolerance())*/;}
+	void Dump(){cout<<setw(15)<<sum<<" "<<setw(15)<<GetResult()<<" "<<setw(15)<<Error()<<(Valid()?"y":"n")<<"\n";}
+};
+
+template <class Container >
+void DoSingleOperationPerformanceCheck(ostream &os,int elements,int log2)
 {
 	int  (*func_var)(Container&)=&SumArray;
 	void *ptr=(void*)func_var;
-	int lim=1,iter=0,cursz=0,place=0,j,sum3=0;
-	std::vector<Container> vecCon;
+	int cursz,j,sum3=0,sum4=0;
+	int upper=1<<log2,lower=upper/2;
+	unsigned int place=2,idx;
 	typename std::vector<Container>::iterator it;
-	double denom;
-	typename Container::iterator subit;
-	vecCon.resize(elements);
-	int sum1=0,sum2=0,log2=1;
-	while(lim<maxsz){
-		lim<<=1;
-		log2++;
-	}
-	std::vector<double> vd;
-	vd.resize(log2);
-	std::vector<double> t_start1=vd,t_ins=vd,t_readrnd=vd,t_readiter=vd,
-		t_start2=vd,t_del=vd;
-	//Inserting and reading, while measuring performance
-	lim=1;
-	while(lim<maxsz){
-		t_start1[iter]=MSec();
-		//Inserting		
-		while(cursz<lim){
+	typename Container::const_iterator subit;
+	int sum1=0,sum2=0;
+	int cycles=0;
+	double t_start1,t_ins,t_readrnd,t_readiter,t_fastsum,t_del;
+	TimeVal res_ins,res_del,res_rand,res_sum,res_iter;
+	while(!((res_ins.Valid())&&(res_del.Valid())&&(res_rand.Valid())&&
+			(res_sum.Valid())&&(res_iter.Valid()))){
+		std::vector<Container> vecCon;
+		vecCon.resize(elements);
+		cursz=0;
+		// Growing until lower limit reached
+		while(cursz<lower){
 			cursz++;
 			for(it=vecCon.begin();it!=vecCon.end();it++){
-				place=(place+101)%cursz;
-				insert_val(*it,place,place);
+				next_rand(place);
+				idx=place%cursz;
+				insert_val(*it,idx,idx);
 			}
 		}
-		t_ins[iter]=MSec();
-		//Accessing randomly		
-		for(j=0;j<cursz;j++){
+		//Inserting until upper limit reached
+		t_start1=MSec();
+		while(cursz<upper){
+			cursz++;
 			for(it=vecCon.begin();it!=vecCon.end();it++){
-				sum1+=(*it)[(j*101)%cursz];
+				next_rand(place);
+				idx=place%cursz;
+				insert_val(*it,idx,idx);
 			}
 		}
-		t_readrnd[iter]=MSec();
+		t_ins=MSec();
+		//Accessing randomly
+		for(j=0;j<cursz;j++){
+			next_rand(place);
+			idx=place%cursz;
+			for(it=vecCon.begin();it!=vecCon.end();it++){
+				sum1+=(*it)[idx];
+			}
+		}
+		t_readrnd=MSec();
 		//Accessing via iterator
 		for(it=vecCon.begin();it!=vecCon.end();it++){
 			for(subit=(*it).begin();subit!=(*it).end();subit++){
 				sum2+=(*subit);
 			}
 		}
-		t_readiter[iter]=MSec();
-		lim<<=1;
-		iter++;
-		//sum3+=func_var(vecCon[0]);				
-	}
-	//Deleting and measuring performance
-	while(lim!=0){
-		lim>>=1;
-		t_start2[iter]=MSec();
-		while(cursz>lim){
+		t_readiter=MSec();
+		//Accessing via visitor
+		for(it=vecCon.begin();it!=vecCon.end();it++){
+			sum4+=Visiting(*it);
+		}
+		t_fastsum=MSec();
+		//Now deleting elements one by one, until lower limit reached
+		while(cursz>lower){
 			for(it=vecCon.begin();it!=vecCon.end();it++){
-				place=(place+101)%cursz;
-				erase_val(*it,place);
+				next_rand(place);
+				idx=place%cursz;
+				erase_val(*it,idx);
 			}
 			cursz--;
 		}
-		t_del[iter]=MSec();
-		iter--;
+		t_del=MSec();
+		// Adding values
+		res_ins.AddValue(t_ins-t_start1);
+		res_rand.AddValue(t_readrnd-t_ins);
+		res_iter.AddValue(t_readiter-t_readrnd);
+		res_sum.AddValue(t_fastsum-t_readiter);
+		res_del.AddValue(t_del-t_fastsum);
+		cycles++;
 	}
-	cout<<"Our dummies "<<sum1<<" "<<sum2<<" "<<sum3<<" "<<ptr<<"\n";
-	ofs<<"\n Averaged on "<<elements<<" measurements.\n";
-	ofs<<"Array size      Insert      Delete     Read_rand     Read_iter\n";	
-	ofs<<setprecision(2)<<scientific;
-	for(j=0;j<(log2-1);j++){
-		denom=1.0/((double)(1<<j))/((double)(elements));
-		ofs<<setw(9)<<(1<<j)<<" "<<setw(12)<<((t_ins[j]-t_start1[j])*denom*2.0)
-				   <<" "<<setw(12)<<((t_del[j]-t_start2[j])*denom*2.0)
-				   <<" "<<setw(12)<<((t_readrnd[j]-t_ins[j])*denom)
-				   <<" "<<setw(12)<<((t_readiter[j]-t_readrnd[j])*denom)<<"\n";
-		//We have accessed all elems, and added only half of them.
-		//Strictly speaking, we measure insertion and deletion not when
-		//array size==1<<log2, but when it changes from 1<<(log2-1) to 1<<log2.
-		//However, we get a dynamics.
-	} 
-	ofs<<"\n\n\n";	
+	cout<<"Our dummies "<<sum1<<" "<<sum2<<" "<<sum3<<" "<<sum4<<" "<<ptr<<"; cycle(s):"<<cycles<<"\n";
+	double denom=1.0/((double)(upper))/((double)(elements));//((double)cycles);
+	os<<setprecision(2)<<scientific;
+	os<<setw(9)<<(upper)<<" "<<setw(12)<<(res_ins.GetResult()*denom*2.0)
+			   <<" "<<setw(12)<<(res_del.GetResult()*denom*2.0)
+			   <<" "<<setw(12)<<(res_rand.GetResult()*denom)
+			   <<" "<<setw(12)<<(res_iter.GetResult()*denom)
+			   <<" "<<setw(12)<<(res_sum.GetResult()*denom)<<"\n";
 }
+
+template <class Container>
+void SingleOperationPerformanceCheck(ostream &os,int elements,int maxsz)
+{
+	int j=0;
+	cout<<"\n\n New series of experiments.\n";
+	os.unsetf(ios_base::floatfield);
+	os<<"\nAveraged on "<<elements<<" container(s). Timer resolution, msec:"<<TimeQuant()<<"\n";
+	os<<"Array size      Insert      Delete     Read_rand     Read_iter    Fast_sum\n";
+	while((1<<j)<maxsz){
+		DoSingleOperationPerformanceCheck<Container>(os,elements,j);
+		j++;
+	}
+	os<<"\n\n\n";
+}
+
+#ifdef test_cxx_rope
+void TestRope(ofstream &ofs)
+{
+	ofs<<"__gnu_cxx::rope<int>\n";
+	SingleOperationPerformanceCheck<__gnu_cxx::rope<int> >(ofs,1000,5000);
+	ofs<<"__gnu_cxx::rope<int>\n";
+	SingleOperationPerformanceCheck<__gnu_cxx::rope<int> >(ofs,10,50000);
+}
+#else
+void TestRope(ofstream &ofs)
+{
+	ofs<<"Test with __gnu_cxx::rope<int> is disabled. Uncomment line 10 to enable it.\n\n";
+}
+#endif
+
+#ifdef test_vstadnik_container
+void TestVStadnik(ofstream &ofs)
+{
+	ofs<<"std_ext_adv::sequence<int> (by Vadim Stadnik)\n";
+	SingleOperationPerformanceCheck<std_ext_adv::sequence<int> >(ofs,1000,5000);
+	ofs<<"std_ext_adv::sequence<int> (by Vadim Stadnik)\n";
+	SingleOperationPerformanceCheck<std_ext_adv::sequence<int> >(ofs,10,50000);
+}
+#else
+void TestVStadnik(ofstream &ofs)
+{
+	ofs<<"Test with Vadim Stadnik's container is disabled. Uncomment line 9 to enable it.\n\n";
+}
+#endif
 
 void MultipleOperationsTest(ofstream &ofs,int arr,int maxsz)
 {
 	int j;
 	int k=0,l=0;
 	size_t m;
-	alex_kupriianov_array<int,MMM,NNN,fast_memory_operator<int> > akai;
+	unsigned int place=2;
+	btree_seq<int> akai;
 	vector<int> vi;
 	vector<double> fwd,bckwd;	
 	vi.resize(arr*2);
@@ -842,8 +1376,10 @@ void MultipleOperationsTest(ofstream &ofs,int arr,int maxsz)
 	fwd[0]=MSec();
 	for(j=1;j<=log2;j++){
 		while((int)akai.size()<(1<<j)){
-			k=(k+547)%arr;
-			l=(l+547)%(akai.size()+1);
+			next_rand(place);
+			k=place%arr;
+			next_rand(place);
+			l=place%(akai.size()+1);
 			akai.insert(l,&vi[k],&vi[k+arr]);
 		}
 		fwd[j]=MSec();
@@ -851,7 +1387,8 @@ void MultipleOperationsTest(ofstream &ofs,int arr,int maxsz)
 	bckwd[log2]=MSec();
 	for(j=log2-1;j>=0;j--){
 		while((int)akai.size()>(1<<(j))){
-			l=(l+547)%(akai.size()-arr+1);
+			next_rand(place);
+			l=place%(akai.size()-arr+1);
 			akai.erase(l,l+arr);
 		}
 		bckwd[j]=MSec();
@@ -860,8 +1397,21 @@ void MultipleOperationsTest(ofstream &ofs,int arr,int maxsz)
 	ofs<<"Array_size   Insert   Delete\n";
 	ofs<<setprecision(2)<<scientific;
 	for(j=1;j<log2;j++){
-		ofs<<setw(9)<<(1<<j)<<setw(9)<<((fwd[j+1]-fwd[j])/(1<<(j-1)))<<
-			setw(9)<<((bckwd[j]-bckwd[j+1])/(1<<(j-1)))<<"\n";
+		if(1<<j<arr){
+			continue;
+		}
+		ofs<<setw(9)<<(1<<j);
+		if(fwd[j+1]-fwd[j]>tolerance()*TimeQuant()){
+			ofs<<" "<<setw(9)<<((fwd[j+1]-fwd[j])/(1<<(j-1)));
+		}else{
+			ofs<<"       -  ";
+		}
+		if(bckwd[j]-bckwd[j+1]>tolerance()*TimeQuant()){
+			ofs<<" "<<setw(9)<<((bckwd[j]-bckwd[j+1])/(1<<(j-1)));
+		}else{
+			ofs<<"       -  ";
+		}
+		ofs<<"\n";
 	}
 	ofs<<"\n\n\n";	
 	cout<<"Test with "<<arr<<" elements completed.\n";
@@ -871,29 +1421,26 @@ void PerformanceTest()
 {
 	TestDescriptor t1("Now performance tests.");
 	{
-		alex_kupriianov_array<int,MMM,NNN> akai;
+		btree_seq<int> akai;
 		string s;
 		std::ostringstream fname;
-		fname<<"results"<<MMM<<"_"<<NNN<<".txt";
+		int MMM=akai.__children_in_branch(),NNN=akai.__elements_in_leaf();
+		fname<<"results"<<MMM<<"_"<<NNN<<"_r.txt";
 		s=fname.str();
 		ofstream ofs(s.c_str());
 		ofs<<"Experiments with MMM="<<MMM<<" NNN="<<NNN
 			<<" sizeof(Branch)="<<akai.__branch_size()
 			<<" sizeof(Leaf)="<<akai.__leaf_size()<<"\n";
 		ofs<<"vector<int>\n";
-		SingleOperationPerformanceCheck<std::vector<int> >(ofs,100000,1000);
-		ofs<<"alex_kupriianov_array<int>\n";
-		SingleOperationPerformanceCheck<alex_kupriianov_array<int,MMM,NNN> >(ofs,100000,1000);
-		ofs<<"vector<int>\n";
-		SingleOperationPerformanceCheck<std::vector<int> >(ofs,500,10000);
-		ofs<<"deque<int>\n"; 
-		SingleOperationPerformanceCheck<std::deque<int> >(ofs,100,10000);
-		ofs<<"alex_kupriianov_array<int>\n";
-		SingleOperationPerformanceCheck<alex_kupriianov_array<int,MMM,NNN> >(ofs,500,100000);
-		ofs<<"alex_kupriianov_array<int, fast_memory_operator>\n";
-		SingleOperationPerformanceCheck<alex_kupriianov_array<int,MMM,NNN,fast_memory_operator<int> > >(ofs,100,100000);
-		ofs<<"alex_kupriianov_array<int>\n";
-		SingleOperationPerformanceCheck<alex_kupriianov_array<int,MMM,NNN> >(ofs,1,10000000);
+		SingleOperationPerformanceCheck<std::vector<int> >(ofs,1000,5000);
+		ofs<<"\n\ndeque<int>\n";
+		SingleOperationPerformanceCheck<std::deque<int> >(ofs,1000,5000);
+		ofs<<"\n\nbtree_seq<int>\n";
+ 		SingleOperationPerformanceCheck<btree_seq<int> >(ofs,1000,5000);
+		ofs<<"\n\nbtree_seq<int>\n";
+ 		SingleOperationPerformanceCheck<btree_seq<int> >(ofs,10,50000);
+ 		TestRope(ofs);
+ 		TestVStadnik(ofs);
 		MultipleOperationsTest(ofs,5,10000000);
 		MultipleOperationsTest(ofs,50,10000000);
 		MultipleOperationsTest(ofs,500,10000000);
@@ -902,6 +1449,7 @@ void PerformanceTest()
 
 int main()
 {
+	cout<<TimeQuant()<<"\n";
 	CorrectnessTestBundle();
 	PerformanceTest();
 	return 0;

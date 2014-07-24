@@ -1,7 +1,13 @@
 //  Copyright (C) 2014 by Aleksandr Kupriianov
 //  email: alexkupri host: gmail dot com
 
-//  Purpose: fast array declaration
+// Distributed under the Boost Software License, Version 1.0.
+//    (See the file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
+
+//  Purpose: fast sequence declaration
+//  See documentation at http://alexkupri.github.io/array/
+
   
 #ifndef __BTREE_SEQ_H
 #define __BTREE_SEQ_H

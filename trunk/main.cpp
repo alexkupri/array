@@ -2,6 +2,11 @@
 //  email: alexkupri host: gmail dot com
 
 //  Purpose: fast array tests and usage examples
+//  See documentation at http://alexkupri.github.io/array/
+
+// Distributed under the Boost Software License, Version 1.0.
+//    (See the file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
 
 //#define enable_nomem_tests
 //#define use_linux_timer

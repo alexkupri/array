@@ -6,7 +6,12 @@
 
 /** @file btree_seq2.h
  * Implementation of btree_seq container, sequence based on btree.
+ * See documentation at http://alexkupri.github.io/array/
  */
+
+// Distributed under the Boost Software License, Version 1.0.
+//    (See the file LICENSE_1_0.txt or copy at
+//          http://www.boost.org/LICENSE_1_0.txt)
 
 /// Moving elements while incrementing pointers
 template <typename T,int L,int M,typename A>

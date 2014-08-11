@@ -15,6 +15,13 @@
 #include <assert.h>
 #include <iterator>
 
+#if __cplusplus >= 201103L
+
+#include <initializer_list>
+#include <utility>
+
+#endif
+
 /** @file btree_seq.h
  * Declaration of btree_seq container, sequence based on btree.
  */
@@ -70,6 +77,8 @@ public:
 	typedef typename A::size_type size_type;
 	///Signed integer type, ptr_diff_t (int).
 	typedef typename A::difference_type difference_type;
+	///Signed integer type, ptr_diff_t (int).
+	typedef typename A::difference_type diff_type;
 private:
 	//data types
 	//In the whole library Node* can be cast to either Branch* or Leaf*.
@@ -102,16 +111,16 @@ private:
 	void move_elements_inc(pointer dst,pointer src,size_type num);
 	void move_elements_dec(pointer dst,pointer limit,size_type num);
 	template <class InputIterator>
-		size_type fill_elements(pointer dst,size_type num,InputIterator &first,InputIterator last,
+		diff_type fill_elements(pointer dst,diff_type num,InputIterator &first,InputIterator last,
 			std::random_access_iterator_tag);
 	template <class InputIterator>
-		size_type fill_elements(pointer dst,size_type num,InputIterator &first,InputIterator last,
+		diff_type fill_elements(pointer dst,diff_type num,InputIterator &first,InputIterator last,
 			std::input_iterator_tag);
 	template <class InputIterator>
-		size_type count_difference(InputIterator first,InputIterator last,size_type limit,
+		diff_type count_difference(InputIterator,InputIterator,diff_type limit,
 		std::input_iterator_tag){return limit+1;}
 	template <class InputIterator>
-		size_type count_difference(InputIterator first,InputIterator last,size_type,
+		diff_type count_difference(InputIterator first,InputIterator last,diff_type,
 		std::random_access_iterator_tag){return last-first;}
 	void burn_elements(pointer ptr,size_type num);
 	//branch helpers
@@ -143,18 +152,20 @@ private:
 		void prepare_for_splitting(Branch *&branch_bundle,
 				Node_type *&result,Node_type *existing,Alloc &alloc);
 	void split(Node* existing,Node* right_to_existing,size_type right_count,Branch *branch_bundle);
-	void add_child(Branch* parent,Node* inserted,size_type count,size_type pos,size_type rl,Branch *branch_bundle);
+	void add_child(Branch* parent,Node* inserted,size_type elements,size_type pos,size_type rl,Branch *branch_bundle);
 	//underflow and sew functions
 	void deep_sew(size_type pos);
 	void my_deep_sew(size_type pos);
 	void advanced_sew_together(Leaf *last_leaf,size_type pos);
 	//helper functions and a class for inserting
-	template <class InputIterator>
-		void insert_no_more_half_leaf
-			(size_type pos,InputIterator first,InputIterator last,size_type num);
+	size_type prepare_leaf_for_inserting
+		(size_type pos,diff_type num,Leaf *&res,Leaf **sibling);
+	void undo_preparing_to_insert
+		(size_type pos,diff_type num,Leaf *l,Leaf *sibling,size_type found);
+
 	template <class InputIterator>
 		Leaf* start_inserting(size_type &pos,InputIterator &first,InputIterator last);
-	void insert_leaves(Leaf **l,size_type num_leaves,size_type num_elems,size_type pos);
+	void insert_leaves(Leaf **l,size_type num_leaves,diff_type num_elems,size_type pos);
 	template <class InputIterator>
 		Leaf* insert_whole_leaves(size_type startpos,size_type &pos,InputIterator first,InputIterator last,Leaf *last_leaf);
 	class FillIterator
@@ -186,11 +197,11 @@ private:
 		bool operator!=(const FillIterator &that)const
 			{ return j!=that.j;	}
 		difference_type operator-(const FillIterator &that)const
-			{return j-that.j;}
+			{return static_cast<diff_type>(j)-static_cast<diff_type>(that.j);}
 	};
 	//helper function and classes for delete and iterative access
 	template<typename Action>
-		bool recursive_action(Action &act,size_type start,size_type diff,size_type depth,Node *node);
+		bool recursive_action(Action &act,size_type start,size_type diff,size_type dep,Node *node);
 	class erase_helper
 	{
 		Leaf *last_leaf;
@@ -211,7 +222,7 @@ private:
 		size_type iters;
 	public:
 		visitor_helper(V &vv):v(vv),iters(0){};
-		void decrement_value(size_type &a,size_type b){}
+		void decrement_value(size_type &,size_type){}
 		bool shift_array(){return false;}
 		bool process_leaf(Leaf *l,size_type st,size_type fin);
 		size_type get_iters(){return iters;}
@@ -223,7 +234,7 @@ private:
 	template <class Integer>
 		void impl_insert(size_type pos,Integer n,Integer val,___alexkupri_helpers::my_true_type)
 	{
-		fill(pos,n,val);
+		fill(pos,static_cast<size_type>(n),val);
 	}
 	template <class InputIterator>
 		void impl_insert(size_type pos,InputIterator first,InputIterator last,___alexkupri_helpers::my_false_type)
@@ -309,7 +320,7 @@ public:
 	    	avail_ptr(0),
 	    	rel_idx(),
 	    	br(),
-	    	idx_in_br(){};
+	    	idx_in_br(){}
 	    /// Operator = for the same type.
 	    iterator_base& operator=(const iterator_base/*<T2>*/ &that)
 	    	{
@@ -343,31 +354,32 @@ public:
 	    /// Comparison
 	    template<typename T2>
 		bool operator==(const iterator_base<T2>& that)const
-			{return get_position()==that.get_position();};
+			{return get_position()==that.get_position();}
 	    /// Comparison
 	    template<typename T2>
 		bool operator!=(const iterator_base<T2>& that)const
-			{return get_position()!=that.get_position();};
+			{return get_position()!=that.get_position();}
 	    /// Comparison
 	    template<typename T2>
 		bool operator>(const iterator_base<T2>& that)const
-			{return get_position()>that.get_position();};
+			{return get_position()>that.get_position();}
 	    /// Comparison
 	    template<typename T2>
 		bool operator<(const iterator_base<T2>& that)const
-			{return get_position()<that.get_position();};
+			{return get_position()<that.get_position();}
 	    /// Comparison
 	    template<typename T2>
 		bool operator>=(const iterator_base<T2>& that)const
-			{return get_position()>=that.get_position();};
+			{return get_position()>=that.get_position();}
 	    /// Comparison
 	    template<typename T2>
 		bool operator<=(const iterator_base<T2>& that)const
-			{return get_position()<=that.get_position();};
+			{return get_position()<=that.get_position();}
 	    /// Comparison
 	    template<typename T2>
 		difference_type operator-(const iterator_base<T2>& that)const
-			{return get_position()-that.get_position();}
+			{return static_cast<diff_type>(get_position())-
+					static_cast<diff_type>(that.get_position());}
 	    /// Preincrement
 		iterator_base& operator++(){++abs_idx;++rel_idx;return *this;}
 	    /// Predecrement
@@ -377,7 +389,7 @@ public:
 	    /// Postdecrement
 		iterator_base operator--(int){iterator_base tmp(*this);--(*this);return tmp;}
 		/// Increase position by n
-		iterator_base& operator+=(difference_type n){abs_idx+=n;rel_idx+=n;return *this;}
+		iterator_base& operator+=(difference_type n){abs_idx=abs_idx+n;rel_idx=rel_idx+n;return *this;}
 		/// Decrease position by n
 		iterator_base& operator-=(difference_type n){abs_idx-=n;rel_idx-=n;return *this;}
 		/// Increase position by n
@@ -446,6 +458,31 @@ public:
 		typename ___alexkupri_helpers::my_is_integer<Iterator>::__type is_int_type;
 		impl_insert(0,first,last,is_int_type);
 	}
+	#if __cplusplus >= 201103L
+
+	///Move constructor (C++11)
+	/** Creates a copy of container and leaves that container in valid (empty) state.
+	 * @param that container to copy
+	 * @param alloc allocator	 */
+	btree_seq(btree_seq<T,L,M,A> &&that, const allocator_type &alloc=allocator_type()):T_alloc(alloc)
+	{
+		root=that.root;
+		count=that.count;
+		depth=that.depth;
+		that.count=0;
+		that.depth=0;
+	}
+
+	///Initializer list constructor (C++11)
+	/** Creates a container with elements in initializer list.
+	 * @param il initializer_list
+	 * @param alloc allocator to use*/
+	btree_seq(std::initializer_list<value_type> il,
+			const allocator_type &alloc=allocator_type())
+		:btree_seq(il.begin(),il.end(),alloc){}
+
+	#endif
+
 	///Destructor
 	/** Deletes the contents and frees memory.
 	 * Complexity: O(N*log(N)).*/
@@ -566,12 +603,12 @@ public:
 	 * find_if, for_each and so on, but it behaves significantly (roughly twice) faster than
 	 * standard implementation and iterator access.
 	 * Complexity: O(log(N)*(end-start))
-	 * @param start the first element on which visitor should be called
-	 * @param end the element beyond the last element on which visitor should be called
+	 * @param first the first element on which visitor should be called
+	 * @param last the element beyond the last element on which visitor should be called
 	 * @param v the visitor class, which must have 'bool operator(element&)'
 	 * @return the index of the first element when v() returned true, or end if v() never returned true*/
 	template<typename V>
-		size_type visit(size_type start,size_type end,V& v);
+		size_type visit(size_type first,size_type last,V& v);
 	///@}
 	/** @name Modifying certain elements of the sequence
 	 */
@@ -584,7 +621,16 @@ public:
 	 * @param pos position to insert
 	 * @param val element to insert*/
 	void insert(size_type pos,const value_type& val)
-		{insert_no_more_half_leaf(pos,&val,(&val)+1,1);}
+	{
+	   Leaf *l;
+	   size_type found=prepare_leaf_for_inserting(pos,1,l,0);
+	   try{
+		   T_alloc.construct(l->elements+found,val);
+	   }catch(...){
+		   undo_preparing_to_insert(pos,1,l,0,found);
+		   throw;
+	   }
+	}
 	/// Native function for inserting a range of elements.
 	/** Inserts the range [first,last) of elements into the given position.
 	 * Complexity: O((N+M)*log(N+M)), N-existing elements, M - new ones.
@@ -636,6 +682,47 @@ public:
 		impl_insert(position,first,last,is_int_type);
 		return iterator_at(position);
 	}
+	#if __cplusplus >= 201103L
+	///Native inserting of rvalue (C++11)
+	/** Moves the value into the given position and leaves old value undefined but valid.
+	 * @param pos position where the value is inserted
+	 * @param val the object to be moved*/
+	void insert(size_type pos,value_type&& val)
+	{
+		emplace(pos,std::move(val));
+	}
+
+	///Compatible insertion of rvalue (C++11)
+	/** Moves the value into the given position and leaves old value undefined, but valid.
+	 * @param pos position where the value is inserted
+	 * @param val the object to be moved
+	 * @return iterator pointing to the new inserted value*/
+	iterator insert(const_iterator pos,value_type &&val)
+	{
+		size_type position=pos.get_position();
+		emplace(position,std::move(val));
+		return iterator_at(position);
+	}
+
+	///Native inserting of elements using initializer_list (C++11)
+	/** @param pos place to insert
+	 *  @param il elements to insert */
+	void insert(size_type pos,std::initializer_list<value_type> il)
+	{
+		insert(pos,il.begin(),il.end());
+	}
+
+	///Compatible inserting of elements using initializer_list (C++11)
+	/** @param pos place to insert
+	 * @param il elements to insert
+	 * @return iterator pointing to the first of new inserted values*/
+	iterator insert(const_iterator pos,std::initializer_list<value_type> il)
+	{
+		size_type position=pos.get_position();
+		insert(position,il.begin(),il.end());
+		return iterator_at(position);
+	}
+	#endif
 	/// Native function for inserting n copies of an element.
 	/** Inserts n copiesof an element at a given position.
 	 * Complexity: O((n+M)*log(n+M)), M - existing elements, n - new ones.
@@ -698,6 +785,63 @@ public:
 	/** Complexity: O(log(N))	 */
 	void pop_front()
 		{	erase(0,1);	}
+	#if __cplusplus >= 201103L
+	///Creates the element at the end of container and leaves val with undefined state. (C++11)
+	void push_back(value_type &&val)
+	{
+		emplace(count,std::move(val));
+	}
+
+	///Creates the element at the beginning of container and leaves val with undefined state. (C++11)
+	void push_front(value_type &&val)
+	{
+		emplace(0,std::move(val));
+	}
+
+	///Native emplace function (C++11)
+	/**	Constructs an element using args and places it to the given position
+	 * @param pos position to create element
+	 * @param args parameters passed to element's constructor 	 */
+	template <class ...Args>
+	void emplace(size_type pos,Args&&... args)
+	{
+		Leaf *l;
+		size_type found=prepare_leaf_for_inserting(pos,1,l,0);
+		try{
+			T_alloc.construct(l->elements+found,std::forward<Args>(args)...);
+		}catch(...){
+			undo_preparing_to_insert(pos,1,l,0,found);
+			throw;
+		}
+	}
+
+	///Constructs an element at the given position (C++11)
+	/** @param pos position to place new element
+	 *	@param args arguments passed to the element's constructor
+	 *	@return iterator pointing to the new element */
+	template <class ...Args>
+	iterator emplace(const_iterator pos,Args&&... args)
+	{
+		size_type position=pos.get_position();
+		emplace(position,std::forward<Args>(args)...);
+		return iterator_at(position);
+	}
+
+	///Constructs an element at the beginning of the container and passes args to its constructor. (C++11)
+	template <class ...Args>
+	void emplace_front(Args&&... args)
+	{
+		emplace(0,std::forward<Args>(args)...);
+	}
+
+	///Constructs an element at the end of the container and passes args to its constructor. (C++11)
+	template <class... Args>
+	void emplace_back(Args&&... args)
+	{
+		emplace(count,std::forward<Args>(args)...);
+	}
+
+	#endif
 	///@}
 	/** @name Modifying the whole contents of the sequence
 	 */
@@ -779,6 +923,38 @@ public:
 	 * @param that container for leftt part of split operation (old contents removed)
 	 * @param pos place to split */
 	void split_left(btree_seq<T,L,M,A> &that,size_type pos);
+
+	#if __cplusplus >= 201103L
+	///Move operator= (C++11)
+	/** Creates a copy and leaves that container in empty state.
+	 * @param that container to copy  */
+	btree_seq &operator=(btree_seq<T,L,M,A> &&that)
+	{
+		clear();
+		swap(that);
+		return *this;
+	}
+
+	///Initializer list operator= (C++11)
+	/** Replaces the contents with the values of initializer_list
+	 * @param il new contents*/
+	btree_seq &operator=(std::initializer_list<value_type> il)
+	{
+		assign(il);
+		return *this;
+	}
+
+	///assign with initializer_list (C++11)
+	/** Replaces the contents with the values of initializer_list
+	 * @param il new contents*/
+	void assign(std::initializer_list<value_type> il)
+	{
+		clear();
+		insert(0,il.begin(),il.end());
+	}
+
+	#endif
+
 	///@}
 	/** @name Others
 	 * Functions not used in release version: debug, profile and compatibility.
@@ -802,6 +978,8 @@ public:
 	size_type __leaf_size(){return sizeof(Leaf);}
 	/// Function does nothing (compatibility with std::vector).
 	void reserve(size_type n){/*NOTHING*/}
+	/// Function does nothing (compatibility with std::vector).
+	void shrink_to_fit(){/*NOTHING*/}
 	/// Returns allocator.
 	allocator_type get_allocator()const{return T_alloc;}
 	///@}

@@ -19,7 +19,11 @@ void btree_seq<T,L,M,A>::move_elements_inc(pointer dst,pointer src,size_type num
 {
 	pointer limit=src+num;
 	while(src!=limit){
+#if __cplusplus >= 201103L
+		T_alloc.construct(dst,std::move(*src));
+#else
 		T_alloc.construct(dst,*src);
+#endif
 		T_alloc.destroy(src);
 		++dst;
 		++src;
@@ -35,7 +39,11 @@ void btree_seq<T,L,M,A>::move_elements_dec(pointer dst,pointer limit,size_type n
 	while(src!=limit){
 		--dst;
 		--src;
+#if __cplusplus >= 201103L
+		T_alloc.construct(dst,std::move(*src));
+#else
 		T_alloc.construct(dst,*src);
+#endif
 		T_alloc.destroy(src);
 	}
 }
@@ -43,8 +51,8 @@ void btree_seq<T,L,M,A>::move_elements_dec(pointer dst,pointer limit,size_type n
 ///Filling leaf with elements, elements are read from general-type iterator
 template <typename T,int L,int M,typename A>
 template <class InputIterator>
-typename btree_seq<T,L,M,A>::size_type btree_seq<T,L,M,A>::
-	fill_elements(pointer dst,size_type num,InputIterator &first,InputIterator last,
+typename btree_seq<T,L,M,A>::diff_type btree_seq<T,L,M,A>::
+	fill_elements(pointer dst,diff_type num,InputIterator &first,InputIterator last,
 	std::input_iterator_tag)
 {
 	pointer ptr=dst,limit=ptr+num;
@@ -68,11 +76,11 @@ typename btree_seq<T,L,M,A>::size_type btree_seq<T,L,M,A>::
 ///Filling leaf with elements, elements are read from random access iterator
 template <typename T,int L,int M,typename A>
 template <class InputIterator>
-typename btree_seq<T,L,M,A>::size_type btree_seq<T,L,M,A>::
-	fill_elements(pointer dst,size_type num,InputIterator &first,InputIterator last,
+typename btree_seq<T,L,M,A>::diff_type btree_seq<T,L,M,A>::
+	fill_elements(pointer dst,diff_type num,InputIterator &first,InputIterator last,
 	std::random_access_iterator_tag)
 {
-	size_type num2=last-first;
+	diff_type num2=last-first;
 	if(num2<num){
 		num=num2;
 	}
@@ -400,12 +408,12 @@ typename btree_seq<T,L,M,A>::size_type
 			k++;
 			val=br->nums[k];
 		}
-		br->nums[k]+=increment;
+		br->nums[k]=br->nums[k]+increment;
 		node=br->children[k];
 		j--;
 	}
 	l=node;
-	count+=increment;
+	count=count+increment;
 	return pos;
 }
 
@@ -517,7 +525,7 @@ void btree_seq<T,L,M,A>::split(Node* existing,Node* right_to_existing,
 ///from left or right side (lr).
 template <typename T,int L,int M,typename A>
 void btree_seq<T,L,M,A>::add_child(Branch* parent,Node* inserted,
-		size_type count,size_type pos,size_type rl,Branch *branch_bundle)
+		size_type elements,size_type pos,size_type rl,Branch *branch_bundle)
 {
 	Branch *new_branch=0, *branch_to_insert=parent;
 	size_type num=0;
@@ -536,8 +544,8 @@ void btree_seq<T,L,M,A>::add_child(Branch* parent,Node* inserted,
 	inserted->parent=branch_to_insert;
 	insert_children(branch_to_insert,pos+rl,1);
 	branch_to_insert->children[pos+rl]=inserted;
-	branch_to_insert->nums[pos+rl]=count;
-	branch_to_insert->nums[pos+1-rl]-=count;
+	branch_to_insert->nums[pos+rl]=elements;
+	branch_to_insert->nums[pos+1-rl]-=elements;
 	//performing next splitting, if necessary
 	if(new_branch!=0){
 		split(parent,new_branch,num,branch_bundle);
@@ -624,14 +632,14 @@ void btree_seq<T,L,M,A>::advanced_sew_together
 	my_deep_sew(pos);
 }
 
-///Fast function for inserting few amount of elements (no more than one splitting).
-template <typename T,int L,int M,typename A> template <class InputIterator>
-void btree_seq<T,L,M,A>::insert_no_more_half_leaf
-	(size_type pos,InputIterator first,InputIterator last,size_type num)
+///Preparing place for inserting some (small) amount of elements.
+template <typename T,int L,int M,typename A>
+typename btree_seq<T,L,M,A>::size_type btree_seq<T,L,M,A>::prepare_leaf_for_inserting
+	(size_type pos,diff_type num,Leaf *&res,Leaf **sibling)
 {
 	Leaf *l,*l2=0;
 	Node *nod;
-	size_type found,delta=0,fill,place_of_splitting=pos;
+	size_type found,delta=0,fillament,place_of_splitting=pos;
 	if(count==0){
 		init_tree();
 	}
@@ -640,11 +648,12 @@ void btree_seq<T,L,M,A>::insert_no_more_half_leaf
 	}
 	found=find_leaf(nod,pos-delta,num)+delta;//find leaf and increment counter
 	l=static_cast<Leaf*>(nod);
-	fill=l->fillament;
-	if(fill+num>M){
+	fillament=l->fillament;
+	if(fillament+num>M){
 		Leaf *newleaf,*leaf_to_ins=l;
 		Branch *branch_bundle=0;
-		size_type new_found=found,old_leaf=fill-fill/2,addition=0;
+		size_type new_found=found,old_leaf=fillament-fillament/2;
+		diff_type addition=0;
 		place_of_splitting=pos-found+old_leaf;
 		try{
 			prepare_for_splitting(branch_bundle,newleaf,l,leaf_alloc);
@@ -654,33 +663,45 @@ void btree_seq<T,L,M,A>::insert_no_more_half_leaf
 			throw;
 		}
 		l2=newleaf;
-		newleaf->fillament=fill-old_leaf;
+		newleaf->fillament=fillament-old_leaf;
 		if(new_found>old_leaf){
 			leaf_to_ins=newleaf;
 			found-=old_leaf;
 			addition=num;
 			l2=l;
 		}
+		if(sibling!=0){
+			*sibling=l2;
+		}
 		split(l,newleaf,newleaf->fillament+addition,branch_bundle);//splitting the leaf, that was overflowed
-		move_elements_inc(newleaf->elements,l->elements+old_leaf,fill-old_leaf);
+		move_elements_inc(newleaf->elements,l->elements+old_leaf,fillament-old_leaf);
 		l->fillament=old_leaf;
 		l=leaf_to_ins;
 	}
 	move_elements_dec(l->elements+found+num,l->elements+found,l->fillament-found);
-	l->fillament+=num;
-	try{
-		fill_elements(l->elements+found,num,first,last,
-				typename std::iterator_traits<InputIterator>::iterator_category());
-	}catch(...){
-		l->fillament-=num;
-		move_elements_inc(l->elements+found,l->elements+found+num,l->fillament-found);
-		find_leaf(nod,pos-delta,-num);
-		underflow_leaf(l);//necessary: if l is empty
-		my_deep_sew(place_of_splitting);//necessary if both sides are small
-		throw;
+	l->fillament=l->fillament+num;
+	res=l;
+	return found;
+}
+
+///Preparing place for inserting some (small) amount of elements.
+template <typename T,int L,int M,typename A>
+void btree_seq<T,L,M,A>::undo_preparing_to_insert
+	(size_type pos,diff_type num,Leaf *l,Leaf *sibling,size_type found)
+{
+	Node *dummy;
+	size_type delta=0;
+	if(pos!=0){
+		delta=1;
 	}
-	if(l2!=0){
-		underflow_leaf(l2);//Check if the smallest leaf needs underflow
+	l->fillament=l->fillament-num;
+	move_elements_inc(l->elements+found,l->elements+found+num,l->fillament-found);
+	find_leaf(dummy,pos-delta,-num);
+	if(sibling!=0){
+		underflow_leaf(sibling);
+		my_deep_sew(pos);
+	}else{
+		underflow_leaf(l);//necessary: if l is empty
 	}
 }
 
@@ -692,7 +713,8 @@ typename btree_seq<T,L,M,A>::Leaf
 	*btree_seq<T,L,M,A>::start_inserting
 	(size_type &pos,InputIterator &first,InputIterator last)
 {
-	size_type n=0,found;
+	diff_type n=0;
+	size_type found;
 	Leaf *new_leaf=0,*l=0;
 	Node *dummy;
 	Branch *branch_bundle=0;
@@ -711,7 +733,7 @@ typename btree_seq<T,L,M,A>::Leaf
 	}
 	//we fill last leaf before gap as good as we can
 	try{
-		n=fill_elements(l->elements+found,M-found,first,last,
+		n=fill_elements(l->elements+found,static_cast<diff_type>(M-found),first,last,
 			typename std::iterator_traits<InputIterator>::iterator_category());
 	}
 	catch(...){
@@ -719,9 +741,9 @@ typename btree_seq<T,L,M,A>::Leaf
 		my_deep_sew(pos);//this is for case splitting
 		throw;
 	}
-	l->fillament+=n;
+	l->fillament=l->fillament+n;
 	find_leaf(dummy,pos-1,n);
-	pos+=n;
+	pos=pos+n;
 	return l;
 }
 
@@ -729,7 +751,7 @@ typename btree_seq<T,L,M,A>::Leaf
 ///Assuming that position is between leaves.
 template <typename T,int L,int M,typename A>
 void btree_seq<T,L,M,A>::insert_leaves(Leaf **l,size_type num_leaves,
-	size_type num_elems,size_type pos)
+	diff_type num_elems,size_type pos)
 {
 	if(depth==0){
 		Branch *new_branch=branch_alloc.allocate(1);
@@ -740,12 +762,11 @@ void btree_seq<T,L,M,A>::insert_leaves(Leaf **l,size_type num_leaves,
 	Branch *parent=left_neighbour->parent;
 	Branch *new_branch=0,*branch_bundle=0;
 	size_type k;
-	int place=find_child(parent,left_neighbour),oldplace=place;
+	size_type place=find_child(parent,left_neighbour),oldplace=place;
 	if(pos!=0){
 		place++;
 	}
 	if(parent->fillament+num_leaves>L){
-		//Refactor these cycles
 		Leaf *nodes[L*2];
 		Leaf **dst=nodes;
 		try{
@@ -754,7 +775,7 @@ void btree_seq<T,L,M,A>::insert_leaves(Leaf **l,size_type num_leaves,
 			find_leaf(left_neighbour,pos?pos-1:0,-num_elems);
 			throw;
 		}
-		int j,n=parent->fillament,first,sum=0;
+		size_type j,n=parent->fillament,first,sum=0;
 		for(j=0;j<place;j++){
 			*dst++=static_cast<Leaf*>(parent->children[j]);
 		}
@@ -772,7 +793,7 @@ void btree_seq<T,L,M,A>::insert_leaves(Leaf **l,size_type num_leaves,
 		new_branch->fillament=n-first;
 		split(parent,new_branch,sum,branch_bundle);
 	}else{
-		parent->nums[oldplace]-=num_elems;
+		parent->nums[oldplace]=parent->nums[oldplace]-num_elems;
 		insert_children(parent,place,num_leaves);
 		fill_leaves(parent,place,l,num_leaves);
 	}
@@ -785,7 +806,8 @@ typename btree_seq<T,L,M,A>::Leaf
 		(size_type startpos,size_type &pos,InputIterator first,InputIterator last,Leaf *last_leaf)
 {
 	Leaf *l[L];
-	size_type n,total_sum,leaf_num;
+	size_type leaf_num;
+	diff_type total_sum,n;
 	try{
 		while(first!=last){
 			total_sum=0;
@@ -797,11 +819,11 @@ typename btree_seq<T,L,M,A>::Leaf
 				leaf_num++;
 				n=fill_elements(last_leaf->elements,M,first,last,
 					typename std::iterator_traits<InputIterator>::iterator_category());
-				last_leaf->fillament=n;
+				last_leaf->fillament=static_cast<size_type>(n);
 				total_sum+=n;
 			}
 			insert_leaves(l,leaf_num,total_sum,pos);
-			pos+=total_sum;
+			pos=pos+total_sum;
 		}
 	}
 	catch(...)
@@ -823,14 +845,27 @@ template <typename T,int L,int M,typename A> template <class InputIterator>
 void btree_seq<T,L,M,A>::insert
 	(size_type pos,InputIterator first,InputIterator last)
 {
-	size_type n,startpos=pos;
+	size_type startpos=pos;
+	diff_type n;
 	if(first==last){
 		return;
 	}
 	n=count_difference(first,last,M/2+1,
 		typename std::iterator_traits<InputIterator>::iterator_category());
 	if(n<=M/2){
-		insert_no_more_half_leaf(pos,first,last,n);
+		//insert_no_more_half_leaf(pos,first,last,n);
+		Leaf *l,*sibling=0;
+		size_type found=prepare_leaf_for_inserting(pos,n,l,&sibling);
+		try{
+			fill_elements(l->elements+found,n,first,last,
+					typename std::iterator_traits<InputIterator>::iterator_category());
+		}catch(...){
+			undo_preparing_to_insert(pos,n,l,sibling,found);
+			throw;
+		}
+		if(sibling!=0){
+			underflow_leaf(sibling);
+		}
 	}else{
 		Leaf *last_leaf=start_inserting(pos,first,last);
 		last_leaf=insert_whole_leaves(startpos,pos,first,last,last_leaf);
@@ -842,9 +877,9 @@ void btree_seq<T,L,M,A>::insert
 ///Params: action to perform, node to perform on, interval [start,start+diff) relatively to that node
 ///depth from the node to the bottom.
 template <typename T,int L,int M,typename A> template<typename Action>
-bool btree_seq<T,L,M,A>::recursive_action(Action &act,size_type start,size_type diff,size_type depth,Node *node)
+bool btree_seq<T,L,M,A>::recursive_action(Action &act,size_type start,size_type diff,size_type dep,Node *node)
 {
-	while(depth>0){
+	while(dep>0){
 		if(diff==0){
 			return false;
 		}
@@ -857,7 +892,7 @@ bool btree_seq<T,L,M,A>::recursive_action(Action &act,size_type start,size_type 
 		if((start+diff<=b->nums[j])&&(diff<b->nums[j])){
 			act.decrement_value(b->nums[j],diff);
 			node=b->children[j];
-			depth--;
+			dep--;
 			continue;
 		}
 		if(start>0){
@@ -865,7 +900,7 @@ bool btree_seq<T,L,M,A>::recursive_action(Action &act,size_type start,size_type 
 			if(b->nums[j]-start<del){
 				del=b->nums[j]-start;
 			}
-			if(recursive_action(act,start,del,depth-1,b->children[j])){
+			if(recursive_action(act,start,del,dep-1,b->children[j])){
 				return true;
 			}
 			start+=del;
@@ -875,7 +910,7 @@ bool btree_seq<T,L,M,A>::recursive_action(Action &act,size_type start,size_type 
 		}
 		k=j;
 		while((diff>=b->nums[k])&&(diff>0)){
-			if(recursive_action(act,0,b->nums[k],depth-1,b->children[k])){
+			if(recursive_action(act,0,b->nums[k],dep-1,b->children[k])){
 				return true;
 			}
 			start+=b->nums[k];
@@ -883,7 +918,7 @@ bool btree_seq<T,L,M,A>::recursive_action(Action &act,size_type start,size_type 
 			k++;
 		}
 		if(diff>0){
-			if(recursive_action(act,0,diff,depth-1,b->children[k])){
+			if(recursive_action(act,0,diff,dep-1,b->children[k])){
 				return true;
 			}
 			act.decrement_value(b->nums[k],diff);
@@ -955,11 +990,11 @@ bool btree_seq<T,L,M,A>::visitor_helper<V>::
 //Implementation of the public visit function.
 template <typename T,int L,int M,typename A> template<typename V>
 typename btree_seq<T,L,M,A>::size_type
-	btree_seq<T,L,M,A>::visit(size_type start,size_type end,V& v)
+	btree_seq<T,L,M,A>::visit(size_type first,size_type last,V& v)
 {
 	visitor_helper<V> vh(v);
-	recursive_action(vh,start,end-start,depth,root);
-	return start+vh.get_iters();
+	recursive_action(vh,first,last-first,depth,root);
+	return first+vh.get_iters();
 }
 
 ///Concateneting that (small) tree to this big one, from the left or right side.
@@ -969,12 +1004,12 @@ void btree_seq<T,L,M,A>::insert_tree(btree_seq<T,L,M,A> &that,bool last)
 	Branch *branch_bundle=0,*parent;
 	Node *l;
 	size_type pos=last?count-1:0;
-	find_leaf(l,pos,that.count,that.depth);
+	find_leaf(l,pos,static_cast<diff_type>(that.count),that.depth);
 	parent=l->parent;
 	try{
 		branch_bundle=reserve_enough_branches_splitting(l);
 	}catch(...){
-		find_leaf(l,pos,-that.count,that.depth);
+		find_leaf(l,pos,-static_cast<diff_type>(that.count),that.depth);
 		throw;
 	}
 	add_child(parent,that.root,that.count,last?parent->fillament-1:0,last?1:0,branch_bundle);
@@ -1023,7 +1058,7 @@ void btree_seq<T,L,M,A>::detach_some
 	that.root->parent=0;
 	that.depth=dep;
 	that.count=b->nums[idx];
-	find_leaf(dummy,pos,-that.count,dep);
+	find_leaf(dummy,pos,-static_cast<diff_type>(that.count),dep);
 	delete_children(b,idx,1);
 }
 
@@ -1198,10 +1233,10 @@ void btree_seq<T,L,M,A>::my_assert(bool b,const char *msg)
 }
 
 template <typename T,int L,int M,typename A>
-void btree_seq<T,L,M,A>::check_node(Node* c,size_type sum,bool head,size_type depth,Branch *parent)
+void btree_seq<T,L,M,A>::check_node(Node* c,size_type sum,bool head,size_type dep,Branch *parent)
 {
 	size_type j,summ=0;
-	if(depth>0){
+	if(dep>0){
 		Branch *b=static_cast<Branch*>(c);
 		if(!head){
 			my_assert(b->fillament>=L/2,"Branches must be filled.");
@@ -1213,7 +1248,7 @@ void btree_seq<T,L,M,A>::check_node(Node* c,size_type sum,bool head,size_type de
 		my_assert(sum==summ,"Sum of elements must be equal to the node sum.");
 		my_assert(b->parent==parent,"Parent must be correct.");
 		for(j=0;j<b->fillament;j++){
-			check_node(b->children[j],b->nums[j],false,depth-1,b);
+			check_node(b->children[j],b->nums[j],false,dep-1,b);
 		}
 	}else{
 		Leaf *l=static_cast<Leaf*>(c);
@@ -1236,13 +1271,13 @@ void btree_seq<T,L,M,A>::__check_consistency()
 
 template <typename T,int L,int M,typename A> template <class output_stream>
 void btree_seq<T,L,M,A>::
-	output_node(output_stream &o,Node* c,size_type tabs,size_type depth)
+	output_node(output_stream &o,Node* c,size_type tabs,size_type dep)
 {
 	size_type j;
 	for(j=0;j<tabs;j++){
 		o<<"  ";
 	}
-	if(depth){
+	if(dep){
 		Branch *b=static_cast<Branch*>(c);
 		o<<"B "<<b<<":"<<b->parent;
 		for(j=0;j<b->fillament;j++){
@@ -1250,7 +1285,7 @@ void btree_seq<T,L,M,A>::
 		}
 		o<<"{\n";
 		for(j=0;j<b->fillament;j++){
-			output_node(o,b->children[j],tabs+1,depth-1);
+			output_node(o,b->children[j],tabs+1,dep-1);
 		}
 		for(j=0;j<tabs;j++){
 			o<<"  ";

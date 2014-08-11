@@ -994,6 +994,86 @@ void DetachExceptionTest()
 }
 #endif
 
+#if __cplusplus >= 201103L
+
+struct Coord
+{
+	double x,y;
+	Coord(double xx,double yy):x(xx),y(yy){};
+};
+
+void Cpp11Test()
+{
+	TestDescriptor t1("C++11 tests");
+	{
+		btree_seq<int> bsi={1,2,3,4};
+		assert(bsi.size()==4);
+		btree_seq<int> bsi2(std::move(bsi));
+		assert(bsi.empty());
+		bsi={1,2,3};
+		assert(bsi.size()==3);
+		bsi2=std::move(bsi);
+		assert(bsi2.size()==3);
+		bsi.assign({1,2,3,4,5});
+		assert(bsi.size()==5);
+		btree_seq<string> bss,bss7;
+		btree_seq<string>::iterator it,it2;
+		bss.emplace_front("bbb");
+		bss.emplace_front("aaa");
+		bss.emplace_back("eee");
+		bss.emplace(2,"ddd");
+		it=bss.emplace(bss.begin()+2,"ccc");
+		assert(*it=="ccc");
+		assert(bss.size()==5);
+		assert((bss[0]=="aaa")&&(bss[1]=="bbb")&&(bss[2]=="ccc")&&
+				(bss[3]=="ddd")&&(bss[4]=="eee"));
+		string s1="000",s2="999",s3="222",s4="444",s5="555",s6,s7="777";
+		bss7.emplace(0,s7);
+		s6=std::move(s5);
+		bss.push_back(std::move(s2));
+		bss.push_front(std::move(s1));
+		assert((bss[0]=="000")&&(bss[6]=="999"));
+		bss.insert(2,std::move(s3));
+		it2=bss.insert(bss.begin()+4,std::move(s4));
+		assert((bss[2]=="222")&&(bss[4]=="444")&&(*it2=="444"));
+		btree_seq<int> bsi3={0,3,6},bsi4={0,1,2,3,4,5,6};
+		btree_seq<int>::iterator it9;
+		bsi3.insert(2,{4,5});
+		it9=bsi3.insert(bsi3.begin()+1,{1,2});
+		assert((*it9==1)&&(bsi3==bsi4));
+		string snnn="nnn";
+		bss.emplace(2,snnn);
+		cout<<"Our strings: "<<s1<<s2<<s3<<s4<<s5<<s7<<snnn<<"]]\n";
+		btree_seq<Coord> bsc;
+		bsc.emplace(0,0.6,0.8);
+		assert(fabs(bsc[0].x*bsc[0].x+bsc[0].y*bsc[0].y-1)<1e-10);
+	}
+}
+
+#else
+
+void Cpp11Test()
+{
+	cout<<"C++11 features are disabled.\n";
+}
+
+#endif
+
+void Cpp11Improvements()
+{
+	TestDescriptor t1("C++11 improvements (look at timing)");
+	{
+		btree_seq<string> bs;
+		int j;
+		for(j=0;j<150;j++){
+			ostringstream oss;
+			oss<<j;
+			bs.insert(0,oss.str());
+		}
+		cout<<bs[120]<<"\n";
+	}
+}
+
 void CorrectnessTestBundle()
 {
 	//Functionality tests
@@ -1021,6 +1101,12 @@ void CorrectnessTestBundle()
 	TestCopyExceptions();
 	AttachExceptionTest();
 	DetachExceptionTest();
+	cout<<"\n";
+
+	//C++11 test(s)
+	Cpp11Test();
+	Cpp11Improvements();
+
 	//
 	cout<<"\nAll tests passed. Success.\n";
 }

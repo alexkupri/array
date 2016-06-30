@@ -1024,7 +1024,10 @@ void btree_seq<T,L,M,A>::concatenate_right(btree_seq<T,L,M,A> &that)
 	size_type pos,curdep;
 	Branch *b;
 	if(count==0){
-		swap(that);
+		depth=that.depth;
+		root=that.root;
+		count=that.count;
+		that.count=that.depth=0;
 		return;
 	}
 	if(that.count==0){
@@ -1311,4 +1314,5 @@ void btree_seq<T,L,M,A>::
 		o<<root<<" "<<depth<<" Empty\n";
 	}
 }
+
 
